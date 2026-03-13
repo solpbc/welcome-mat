@@ -4,28 +4,29 @@ the welcome mat specification and website (welcome-m.at). defines how AI agents 
 
 ## project structure
 
-- `index.html` — landing page for humans (what this is, why it matters)
-- `spec/index.html` — spec page for agents and implementers
-- `style.css` — shared styles
+- `public/index.html` — landing page for humans (what this is, why it matters)
+- `public/spec/index.html` — spec page for agents and implementers
+- `public/style.css` — shared styles
 - `spec.md` — canonical spec document (also readable on github)
 - `examples/welcome.md` — example welcome.md file for services to adapt
+- `wrangler.toml` — cloudflare workers deployment config
 
 ## development
 
-static site — no build step. open `index.html` in a browser or serve with any static server.
+static site — no build step. open `public/index.html` in a browser or serve locally.
 
 ```bash
-make dev    # serve locally on port 8080
-make ci     # validate HTML (if tidy is installed)
+make dev      # local dev server via wrangler on port 8080
+make deploy   # deploy to cloudflare workers (welcome-m.at)
 ```
 
 ## deployment
 
-cloudflare pages, connected to this repo. pushes to `main` auto-deploy.
+cloudflare workers with static assets. `wrangler deploy` pushes to production.
 
-- build command: (none)
-- build output directory: `.`
-- custom domain: welcome-m.at
+- worker name: `welcome-mat`
+- custom domain: `welcome-m.at`
+- assets directory: `./public`
 
 ## conventions
 

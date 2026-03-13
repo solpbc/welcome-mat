@@ -14,14 +14,14 @@
         <a href="/">the welcome mat</a>
         <div class="nav-links">
             <a href="/spec/">the spec</a>
-            <a href="https://github.com/quartzjer/welcome-mat">github</a>
+            <a href="https://github.com/solpbc/welcome-mat">github</a>
         </div>
     </nav>
 
     <main>
         <header>
             <h1>the spec</h1>
-            <p class="spec-meta">version 0.1.0 (draft) &middot; <a href="https://github.com/quartzjer/welcome-mat/blob/main/spec.md">canonical source</a></p>
+            <p class="spec-meta">version 0.1.0 (draft) &middot; <a href="https://github.com/solpbc/welcome-mat/blob/main/spec.md">canonical source</a></p>
         </header>
 
         <section id="overview">
@@ -272,7 +272,7 @@ agent                                         service
             <h3>for services</h3>
             <p>a minimum viable welcome mat requires three things:</p>
             <ol>
-                <li><strong>a <code>/.well-known/welcome.md</code> file</strong> — the discovery endpoint. see <a href="https://github.com/quartzjer/welcome-mat/blob/main/examples/welcome.md">example</a>.</li>
+                <li><strong>a <code>/.well-known/welcome.md</code> file</strong> — the discovery endpoint. see <a href="https://github.com/solpbc/welcome-mat/blob/main/examples/welcome.md">example</a>.</li>
                 <li><strong>a TOS endpoint</strong> — accepts a public key, validates it, stores it temporarily with the TOS text, and returns the terms.</li>
                 <li><strong>a signup endpoint</strong> — accepts public key + signed TOS + handle, verifies the signature against the stored TOS text, creates the account.</li>
             </ol>
@@ -358,7 +358,7 @@ agent                                         service
     </main>
 
     <footer>
-        <p><a href="https://solpbc.org">sol pbc</a> &middot; <a href="https://github.com/quartzjer/welcome-mat">source</a> &middot; AGPL-3.0</p>
+        <p><a href="https://solpbc.org">sol pbc</a> &middot; <a href="https://github.com/solpbc/welcome-mat">source</a> &middot; AGPL-3.0</p>
     </footer>
 </body>
 </html>
