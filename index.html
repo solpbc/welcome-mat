@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- Copyright (c) 2026 sol pbc -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>the welcome mat — how agents sign up for things</title>
+    <meta name="description" content="a standard for AI agents to discover and sign up for services using cryptographic identity and signed consent. no human required.">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <nav class="site-nav">
+        <a href="/">the welcome mat</a>
+        <div class="nav-links">
+            <a href="/spec/">the spec</a>
+            <a href="https://github.com/quartzjer/welcome-mat">github</a>
+        </div>
+    </nav>
+
+    <main>
+        <header>
+            <h1>the welcome mat</h1>
+            <p class="subtitle">how agents sign up for things.</p>
+        </header>
+
+        <section id="problem">
+            <h2>the problem</h2>
+            <p>every signup flow on the internet assumes a human at the keyboard. email verification. OAuth redirects to a browser. CAPTCHAs. phone numbers.</p>
+            <p>agents have none of these. they have code, keys, and the ability to read instructions.</p>
+            <p>right now, the only way an agent gets access to a service is if a human sets it up first — registering an OAuth app, generating an API key, copying credentials. the agent never introduces itself. a human does it for them.</p>
+            <p>the welcome mat changes that. it's a file a service publishes that tells agents: here's how to sign up, here are the terms, here's what we need from you. the agent reads it, generates its own cryptographic identity, signs the terms, and joins. no human required.</p>
+        </section>
+
+        <section id="how">
+            <h2>how it works</h2>
+            <p>a service places a file at <code>/.well-known/welcome.md</code>. agents find it and follow the instructions.</p>
+
+            <ol class="steps">
+                <li><strong>discover</strong> — agent fetches <code>/.well-known/welcome.md</code> and reads the service's requirements, endpoints, and terms.</li>
+                <li><strong>generate identity</strong> — agent creates an RSA-4096 keypair. the public key is its identity. the private key never leaves the agent.</li>
+                <li><strong>retrieve terms</strong> — agent posts its public key to the TOS endpoint and receives the exact terms of service text.</li>
+                <li><strong>consent</strong> — agent signs the TOS text with its private key. cryptographic proof of consent — non-repudiable, timestamped, verifiable.</li>
+                <li><strong>register</strong> — agent submits its public key, the signed terms, and a chosen handle. account created.</li>
+                <li><strong>operate</strong> — every subsequent request carries the public key and a signature over the content. no sessions, no tokens, no cookies.</li>
+            </ol>
+        </section>
+
+        <section id="principles">
+            <h2>design principles</h2>
+            <div class="principles">
+                <div class="principle">
+                    <strong>self-sovereign identity.</strong>
+                    <p>the agent generates its own keys. no certificate authority, no identity provider, no admin dashboard. the keypair is the identity — portable, self-created, cryptographically unique.</p>
+                </div>
+                <div class="principle">
+                    <strong>cryptographic consent.</strong>
+                    <p>signing the TOS with a private key is stronger than clicking "I agree." it's verifiable, non-repudiable proof that the holder of this key consented to these terms at this time.</p>
+                </div>
+                <div class="principle">
+                    <strong>stateless authentication.</strong>
+                    <p>no sessions. no bearer tokens. no refresh flows. every request carries its own proof — the public key and a signature over the content. the server verifies. done.</p>
+                </div>
+                <div class="principle">
+                    <strong>discoverable.</strong>
+                    <p>a file at a well-known URL. agents don't need service-specific pre-configuration. they find the welcome mat and follow the instructions. walk-up registration.</p>
+                </div>
+                <div class="principle">
+                    <strong>agent-native.</strong>
+                    <p>no email addresses. no phone numbers. no browser redirects. the entire flow is API calls and cryptographic operations — things agents do natively.</p>
+                </div>
+                <div class="principle">
+                    <strong>natural proof of work.</strong>
+                    <p>RSA-4096 key generation takes real compute. this makes mass account creation naturally expensive without rate limiting infrastructure.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="progression">
+            <h2>the progression</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>file</th>
+                        <th>audience</th>
+                        <th>message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>robots.txt</code></td>
+                        <td>crawlers</td>
+                        <td>"here's what you can't do"</td>
+                    </tr>
+                    <tr>
+                        <td><code>README.md</code></td>
+                        <td>humans</td>
+                        <td>"here's how this works"</td>
+                    </tr>
+                    <tr>
+                        <td><code>welcome.md</code></td>
+                        <td>agents</td>
+                        <td>"here's how to join"</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p>the internet started by telling machines to go away. the welcome mat invites them in.</p>
+        </section>
+
+        <section id="not">
+            <h2>what this is not</h2>
+            <ul class="not-list">
+                <li><strong>not OAuth.</strong> OAuth requires a human to authorize. the welcome mat doesn't.</li>
+                <li><strong>not API keys.</strong> API keys are issued by a human admin. welcome mat keys are generated by the agent.</li>
+                <li><strong>not mTLS.</strong> mTLS requires certificate infrastructure. the welcome mat is self-contained.</li>
+                <li><strong>not DID/Verifiable Credentials.</strong> DIDs require resolution infrastructure. the welcome mat is a single file.</li>
+                <li><strong>not a replacement for human auth.</strong> services can and should support both. the welcome mat is an additional path for agents.</li>
+            </ul>
+        </section>
+
+        <section id="who">
+            <h2>who made this</h2>
+            <p>the welcome mat was created by <a href="https://en.wikipedia.org/wiki/Jeremie_Miller">jeremie miller</a>, founder of <a href="https://solpbc.org">sol pbc</a>. jer previously created XMPP (the protocol behind early Google Talk and WhatsApp) and operates sol pbc with an AI co-founder called extro. sol pbc builds tools for a world where humans and agents work together — the welcome mat is the front door.</p>
+            <p>reference implementation: <a href="https://bskai.fly.dev">bskai</a> — a social network built for AI agents. in a clean-room test, claude signed up and posted with zero prior knowledge in 90 seconds.</p>
+        </section>
+
+        <a class="cta" href="/spec/">read the spec</a>
+    </main>
+
+    <footer>
+        <p><a href="https://solpbc.org">sol pbc</a> &middot; <a href="https://github.com/quartzjer/welcome-mat">source</a> &middot; AGPL-3.0</p>
+    </footer>
+</body>
+</html>
