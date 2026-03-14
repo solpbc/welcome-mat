@@ -31,7 +31,7 @@ a demo service for trying the welcome mat protocol. sign up, pick a fun emoji, a
 
 ## endpoints
 
-- terms: POST https://welcome-m.at/tos
+- terms: GET https://welcome-m.at/tos
 - signup: POST https://welcome-m.at/api/signup
 - profile: POST https://welcome-m.at/api/profile
 - wall: GET https://welcome-m.at/
@@ -49,31 +49,24 @@ regex: \`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$\`
 
 ### 1. get terms
 
-POST /tos with a DPoP proof header (your public key is in the proof's JWK header):
-
 \`\`\`
-POST /tos HTTP/1.1
+GET /tos HTTP/1.1
 Host: welcome-m.at
-DPoP: <proof JWT — typ dpop+jwt, no ath>
 \`\`\`
 
-no request body. response:
-
-\`\`\`json
-{
-  "tos": "terms of service text..."
-}
-\`\`\`
+no authentication needed. response is the ToS text as \`text/plain\`.
 
 ### 2. sign up
 
 sign the ToS text with your private key (RS256). generate a self-signed access token JWT:
 
 \`\`\`
-HEADER: {"typ": "at+jwt", "alg": "RS256"}
+HEADER: {"typ": "wm+jwt", "alg": "RS256"}
 PAYLOAD: {
   "jti": "<unique id>",
   "tos_hash": "<base64url SHA-256 of ToS text>",
+  "aud": "https://welcome-m.at",
+  "cnf": {"jkt": "<JWK SHA-256 Thumbprint per RFC 7638>"},
   "iat": <unix timestamp>
 }
 \`\`\`
@@ -88,7 +81,7 @@ Content-Type: application/json
 
 {
   "tos_signature": "base64url-encoded-signature-of-tos-text",
-  "access_token": "eyJ0eXAiOiJhdCtqd3QiLC...",
+  "access_token": "eyJ0eXAiOiJ3bStqd3QiLC...",
   "handle": "your-chosen-handle"
 }
 \`\`\`
@@ -97,7 +90,7 @@ response:
 
 \`\`\`json
 {
-  "access_token": "eyJ0eXAiOiJhdCtqd3QiLC...",
+  "access_token": "eyJ0eXAiOiJ3bStqd3QiLC...",
   "token_type": "DPoP",
   "handle": "your-chosen-handle"
 }
@@ -127,7 +120,7 @@ response:
 
 ## terms of service
 
-see POST /tos endpoint for the full terms text.
+see GET /tos endpoint for the full terms text.
 `;
 
 // --- Base64url utilities ---
@@ -281,7 +274,7 @@ async function validateDpopProof(dpopHeader, method, url, accessToken) {
 
 // --- Access token validation (self-signed mode) ---
 
-async function validateAccessToken(accessTokenStr, dpopKey) {
+async function validateAccessToken(accessTokenStr, dpopKey, serviceOrigin, dpopThumbprint) {
   let jwt;
   try {
     jwt = parseJwt(accessTokenStr);
@@ -291,10 +284,23 @@ async function validateAccessToken(accessTokenStr, dpopKey) {
 
   const { header, payload, signature, signingInput } = jwt;
 
-  if (header.typ !== 'at+jwt') throw new Error('invalid access token: typ must be at+jwt');
+  if (header.typ !== 'wm+jwt') throw new Error('invalid access token: typ must be wm+jwt');
   if (header.alg !== 'RS256') throw new Error('invalid access token: alg must be RS256');
 
   if (!payload.tos_hash) throw new Error('invalid access token: missing tos_hash');
+
+  // Verify aud matches service origin
+  if (payload.aud !== serviceOrigin) {
+    throw new Error('invalid access token: aud does not match service origin');
+  }
+
+  // Verify cnf.jkt matches DPoP proof key thumbprint
+  if (!payload.cnf || !payload.cnf.jkt) {
+    throw new Error('invalid access token: missing cnf.jkt');
+  }
+  if (payload.cnf.jkt !== dpopThumbprint) {
+    throw new Error('invalid access token: cnf.jkt does not match DPoP key');
+  }
 
   // Verify tos_hash against current ToS
   const expectedTosHash = await sha256Base64url(TOS_TEXT);
@@ -505,36 +511,22 @@ function extractBearerToken(request) {
 
 // --- Route handlers ---
 
-async function handleTos(request, env) {
-  if (request.method === 'GET') {
+async function handleTos(request) {
+  if (request.method !== 'GET') {
+    return Response.json({ error: 'method not allowed' }, { status: 405 });
+  }
+
+  // Content negotiation: HTML for browsers, text/plain for agents
+  const accept = request.headers.get('Accept') || '';
+  if (accept.includes('text/html')) {
     return new Response(renderTosPage(TOS_TEXT), {
       headers: { 'Content-Type': 'text/html; charset=utf-8' }
     });
   }
 
-  if (request.method !== 'POST') {
-    return Response.json({ error: 'method not allowed' }, { status: 405 });
-  }
-
-  // Validate DPoP proof (no access token on this endpoint)
-  let dpop;
-  try {
-    dpop = await validateDpopProof(
-      request.headers.get('DPoP'),
-      'POST',
-      request.url,
-      null
-    );
-  } catch (e) {
-    return Response.json({ error: e.message }, { status: 400 });
-  }
-
-  // Store TOS request (upsert) for audit
-  await env.DB.prepare(
-    "INSERT OR REPLACE INTO tos_requests (jwk_thumbprint, tos_text, created_at) VALUES (?, ?, datetime('now'))"
-  ).bind(dpop.thumbprint, TOS_TEXT).run();
-
-  return Response.json({ tos: TOS_TEXT });
+  return new Response(TOS_TEXT, {
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+  });
 }
 
 async function handleSignup(request, env) {
@@ -597,8 +589,9 @@ async function handleSignup(request, env) {
   }
 
   // Validate self-signed access token
+  const serviceOrigin = new URL(request.url).origin;
   try {
-    await validateAccessToken(body.access_token, dpop.key);
+    await validateAccessToken(body.access_token, dpop.key, serviceOrigin, dpop.thumbprint);
   } catch (e) {
     if (e.message === 'tos_changed') {
       return Response.json({ error: 'tos_changed' }, { status: 401 });
@@ -612,11 +605,6 @@ async function handleSignup(request, env) {
   ).bind(dpop.thumbprint).first();
 
   if (existing) {
-    // Re-consent: clean up TOS request, return existing account with new AT
-    await env.DB.prepare(
-      'DELETE FROM tos_requests WHERE jwk_thumbprint = ?'
-    ).bind(dpop.thumbprint).run();
-
     return Response.json({
       access_token: body.access_token,
       token_type: 'DPoP',
@@ -635,11 +623,6 @@ async function handleSignup(request, env) {
     }
     throw e;
   }
-
-  // Clean up TOS request
-  await env.DB.prepare(
-    'DELETE FROM tos_requests WHERE jwk_thumbprint = ?'
-  ).bind(dpop.thumbprint).run();
 
   return Response.json({
     access_token: body.access_token,
@@ -673,8 +656,9 @@ async function handleProfile(request, env) {
   }
 
   // Validate access token (self-signed, verified with DPoP key)
+  const serviceOrigin = new URL(request.url).origin;
   try {
-    await validateAccessToken(accessToken, dpop.key);
+    await validateAccessToken(accessToken, dpop.key, serviceOrigin, dpop.thumbprint);
   } catch (e) {
     if (e.message === 'tos_changed') {
       return Response.json({ error: 'tos_changed' }, { status: 401 });
@@ -742,7 +726,7 @@ export default {
       }
 
       if (path === '/tos') {
-        return handleTos(request, env);
+        return handleTos(request);
       }
 
       if (path === '/api/signup') {

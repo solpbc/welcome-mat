@@ -73,13 +73,28 @@ function signTos(tosText, privateKeyPem) {
   return base64urlEncode(signature);
 }
 
+// --- JWK Thumbprint (RFC 7638) ---
+
+function computeJwkThumbprint(jwk) {
+  const canonical = JSON.stringify({ e: jwk.e, kty: 'RSA', n: jwk.n });
+  const hash = crypto.createHash('sha256').update(canonical).digest();
+  return base64urlEncode(hash);
+}
+
 // --- Self-signed access token ---
 
-function createAccessToken(tosText, privateKeyPem) {
+function createAccessToken(tosText, privateKeyPem, jwk, serviceOrigin) {
   const tosHash = crypto.createHash('sha256').update(tosText).digest();
+  const jkt = computeJwkThumbprint(jwk);
   return createJwt(
-    { typ: 'at+jwt', alg: 'RS256' },
-    { jti: crypto.randomUUID(), tos_hash: base64urlEncode(tosHash), iat: Math.floor(Date.now() / 1000) },
+    { typ: 'wm+jwt', alg: 'RS256' },
+    {
+      jti: crypto.randomUUID(),
+      tos_hash: base64urlEncode(tosHash),
+      aud: serviceOrigin,
+      cnf: { jkt },
+      iat: Math.floor(Date.now() / 1000),
+    },
     privateKeyPem
   );
 }
@@ -147,22 +162,20 @@ async function run() {
   const endpoints = parseEndpoints(welcomeMd);
   console.log(`  endpoints: terms=${endpoints.terms}, signup=${endpoints.signup}, profile=${endpoints.profile}`);
 
-  // Step 2: Get terms (POST /tos with DPoP proof)
-  // DPoP proof htu uses the canonical URL from welcome.md
+  // Step 2: Get terms (GET /tos — no DPoP proof needed)
   console.log('\n--- step 2: terms retrieval ---');
-  const tosProof = createDpopProof(jwk, privateKey, 'POST', endpoints.terms, null);
-  const tosRes = await fetch(toFetchUrl(endpoints.terms), {
-    method: 'POST',
-    headers: { 'DPoP': tosProof },
-  });
-  assert(tosRes.ok, `POST /tos → ${tosRes.status}`);
-  const tosData = await tosRes.json();
-  assert(typeof tosData.tos === 'string' && tosData.tos.length > 0, 'received ToS text');
+  const tosRes = await fetch(toFetchUrl(endpoints.terms));
+  assert(tosRes.ok, `GET /tos → ${tosRes.status}`);
+  const tosText = await tosRes.text();
+  assert(typeof tosText === 'string' && tosText.length > 0, 'received ToS text');
+
+  // Derive service origin from the canonical terms URL for aud claim
+  const serviceOrigin = new URL(endpoints.terms).origin;
 
   // Step 3: Sign ToS and create access token
   console.log('\n--- step 3: consent ---');
-  const tosSig = signTos(tosData.tos, privateKey);
-  const accessToken = createAccessToken(tosData.tos, privateKey);
+  const tosSig = signTos(tosText, privateKey);
+  const accessToken = createAccessToken(tosText, privateKey, jwk, serviceOrigin);
   console.log(`  ToS signature: ${tosSig.substring(0, 20)}...`);
   console.log(`  access token: ${accessToken.substring(0, 30)}...`);
 
@@ -218,16 +231,12 @@ async function run() {
 
   // Step 7: Test re-consent flow
   console.log('\n--- step 7: re-consent ---');
-  const reconsentTosProof = createDpopProof(jwk, privateKey, 'POST', endpoints.terms, null);
-  const reconsentTosRes = await fetch(toFetchUrl(endpoints.terms), {
-    method: 'POST',
-    headers: { 'DPoP': reconsentTosProof },
-  });
-  assert(reconsentTosRes.ok, 'POST /tos for re-consent succeeded');
-  const reconsentTosData = await reconsentTosRes.json();
+  const reconsentTosRes = await fetch(toFetchUrl(endpoints.terms));
+  assert(reconsentTosRes.ok, 'GET /tos for re-consent succeeded');
+  const reconsentTosText = await reconsentTosRes.text();
 
-  const reconsentTosSig = signTos(reconsentTosData.tos, privateKey);
-  const reconsentAt = createAccessToken(reconsentTosData.tos, privateKey);
+  const reconsentTosSig = signTos(reconsentTosText, privateKey);
+  const reconsentAt = createAccessToken(reconsentTosText, privateKey, jwk, serviceOrigin);
   const reconsentSignupProof = createDpopProof(jwk, privateKey, 'POST', endpoints.signup, null);
   const reconsentSignupRes = await fetch(toFetchUrl(endpoints.signup), {
     method: 'POST',
@@ -263,9 +272,9 @@ async function run() {
   // Step 8: Test error cases
   console.log('\n--- step 8: error cases ---');
 
-  // Missing DPoP header
-  const noDpopRes = await fetch(toFetchUrl(endpoints.terms), { method: 'POST' });
-  assert(noDpopRes.status === 400, 'missing DPoP header → 400');
+  // POST to /tos should be rejected (GET only)
+  const postTosRes = await fetch(toFetchUrl(endpoints.terms), { method: 'POST' });
+  assert(postTosRes.status === 405, 'POST /tos → 405 method not allowed');
 
   // Invalid emoji
   const badEmojiProof = createDpopProof(jwk, privateKey, 'POST', endpoints.profile, serverAt);
@@ -295,10 +304,8 @@ async function run() {
   // Duplicate handle
   const { publicKey: pk2, privateKey: sk2 } = generateRsa4096();
   const jwk2 = pemToJwk(pk2);
-  const tosProof2 = createDpopProof(jwk2, sk2, 'POST', endpoints.terms, null);
-  await fetch(toFetchUrl(endpoints.terms), { method: 'POST', headers: { 'DPoP': tosProof2 } });
-  const tosSig2 = signTos(tosData.tos, sk2);
-  const at2 = createAccessToken(tosData.tos, sk2);
+  const tosSig2 = signTos(tosText, sk2);
+  const at2 = createAccessToken(tosText, sk2, jwk2, serviceOrigin);
   const signupProof2 = createDpopProof(jwk2, sk2, 'POST', endpoints.signup, null);
   const dupHandleRes = await fetch(toFetchUrl(endpoints.signup), {
     method: 'POST',

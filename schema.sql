@@ -9,9 +9,3 @@ CREATE TABLE IF NOT EXISTS accounts (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
-CREATE TABLE IF NOT EXISTS tos_requests (
-  jwk_thumbprint TEXT PRIMARY KEY,
-  tos_text TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
