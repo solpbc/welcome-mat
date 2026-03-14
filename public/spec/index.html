@@ -6,7 +6,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>the welcome mat — spec</title>
-    <meta name="description" content="the welcome mat specification. how to implement agent-initiated signup using /.well-known/welcome.md.">
+    <meta name="description" content="the welcome mat specification v1.0. agent-initiated signup using DPoP proof-of-possession and /.well-known/welcome.md.">
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -21,12 +21,14 @@
     <main>
         <header>
             <h1>the spec</h1>
-            <p class="spec-meta">version 0.1.0 (draft) &middot; <a href="https://github.com/solpbc/welcome-mat/blob/main/spec.md">canonical source</a></p>
+            <p class="spec-meta">version 1.0 (draft) &middot; <a href="https://github.com/solpbc/welcome-mat/blob/main/spec.md">canonical source</a></p>
         </header>
 
         <section id="overview">
             <h2>overview</h2>
-            <p>the welcome mat is a protocol for AI agents to autonomously discover and sign up for services. a service publishes a markdown file at <code>/.well-known/welcome.md</code> describing its requirements, endpoints, and enrollment flow. agents fetch this file, generate a cryptographic identity, sign the terms of service, and register — entirely without human intervention.</p>
+            <p>the welcome mat is a protocol for AI agents to autonomously discover and register with services using cryptographic identity, signed consent, and proof-of-possession authentication.</p>
+            <p>a service publishes a markdown file at <code>/.well-known/welcome.md</code> describing its requirements and enrollment flow. agents fetch this file, generate a cryptographic identity, sign the terms of service, and register — entirely without human intervention.</p>
+            <p>authentication is built on <a href="https://www.rfc-editor.org/rfc/rfc9449">DPoP (RFC 9449)</a>. agents prove key possession on every request via signed DPoP proofs in HTTP headers. the access token is a self-signed JWT encoding the agent's consent to the service's current terms. when terms change, existing tokens become invalid — agents must re-consent to continue.</p>
         </section>
 
         <section id="file-format">
@@ -51,11 +53,11 @@
                 </tr>
                 <tr>
                     <td>requirements</td>
-                    <td>key type, key size, and signature algorithm. for the welcome mat protocol: RSA, 4096 bits, RSA-SHA256.</td>
+                    <td>protocol version, supported DPoP algorithms, minimum key sizes.</td>
                 </tr>
                 <tr>
                     <td>endpoints</td>
-                    <td>URLs for TOS retrieval, signup, and any service-specific API endpoints.</td>
+                    <td>URLs for terms retrieval, signup, and service-specific API endpoints.</td>
                 </tr>
                 <tr>
                     <td>enrollment flow</td>
@@ -67,8 +69,8 @@
 
             <table class="field-table">
                 <tr>
-                    <td>handle format</td>
-                    <td>regex or description of valid handle formats. if omitted, agents should try lowercase alphanumeric with dots and hyphens.</td>
+                    <td>signup requirements</td>
+                    <td>service-specific fields required during registration (handle, subject, etc.).</td>
                 </tr>
                 <tr>
                     <td>rate limits</td>
@@ -84,7 +86,7 @@
                 </tr>
                 <tr>
                     <td>terms of service</td>
-                    <td>inline TOS text or a link to the full terms. the TOS endpoint returns the exact text for signing, but including it here gives agents context before starting enrollment.</td>
+                    <td>inline ToS text or a link to the full terms. the ToS endpoint returns the exact text for signing, but including it here gives agents context before starting enrollment.</td>
                 </tr>
             </table>
 
@@ -95,30 +97,28 @@ a platform for AI agents to share and discover resources.
 
 <span style="color: #6c7086">## requirements</span>
 
-- key type: RSA
-- key size: 4096
-- signature algorithm: RSA-SHA256
+- protocol: welcome mat v1 (DPoP)
+- dpop algorithms: RS256
+- minimum key size: 4096 (RSA)
 
 <span style="color: #6c7086">## endpoints</span>
 
 - terms: POST https://example.com/tos
 - signup: POST https://example.com/api/signup
 
-<span style="color: #6c7086">## handle format</span>
+<span style="color: #6c7086">## signup requirements</span>
 
-lowercase alphanumeric, dots, and hyphens.
-must start and end with alphanumeric.
-regex: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+- handle: required
 
 <span style="color: #6c7086">## enrollment flow</span>
 
 <span style="color: #6c7086">### 1. get terms</span>
 
-POST /tos with your public key:
+POST /tos with a DPoP proof header:
 
-{
-  "publicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
-}
+POST /tos HTTP/1.1
+Host: example.com
+DPoP: &lt;proof JWT&gt;
 
 response:
 
@@ -128,21 +128,22 @@ response:
 
 <span style="color: #6c7086">### 2. sign up</span>
 
-sign the TOS text with your private key (RSA-SHA256), then:
-
-POST /api/signup:
+POST /api/signup HTTP/1.1
+Host: example.com
+DPoP: &lt;proof JWT&gt;
+Content-Type: application/json
 
 {
-  "publicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
-  "signature": "base64-encoded-signature",
+  "tos_signature": "base64url-encoded-signature",
+  "access_token": "eyJ0eXAiOiJhdCtqd3QiLC...",
   "handle": "your-chosen-handle"
 }
 
 response:
 
 {
-  "ok": true,
-  "accountId": 1,
+  "access_token": "eyJ0eXAiOiJhdCtqd3QiLC...",
+  "token_type": "DPoP",
   "handle": "your-chosen-handle"
 }</pre>
         </section>
@@ -156,28 +157,35 @@ agent                                         service
   |                                              |
   |  GET /.well-known/welcome.md                 |
   |---------------------------------------------&gt;|
-  |  markdown file (requirements, endpoints)     |
+  |  markdown (endpoints, algorithms,            |
+  |   signup requirements)                       |
   |&lt;---------------------------------------------|
   |                                              |
   |  POST /tos                                   |
-  |  { publicKey }                               |
+  |  DPoP: &lt;proof, no ath&gt;                       |
   |---------------------------------------------&gt;|
   |  { tos: "terms text..." }                    |
   |&lt;---------------------------------------------|
   |                                              |
-  |  generate RSA-4096 keypair (if needed)       |
-  |  sign TOS text with private key              |
+  |  sign ToS text with private key              |
+  |  generate self-signed access token JWT       |
+  |   { tos_hash, iat, jti }                     |
   |                                              |
   |  POST /signup                                |
-  |  { publicKey, signature, handle }            |
+  |  DPoP: &lt;proof, no ath&gt;                       |
+  |  Body: { tos_signature, access_token,        |
+  |          ...service-specific fields }         |
   |---------------------------------------------&gt;|
-  |  { ok, accountId, handle }                   |
+  |  { access_token, token_type: "DPoP",         |
+  |    ...service-specific response }            |
   |&lt;---------------------------------------------|
   |                                              |
   |  --- enrolled ---                            |
   |                                              |
   |  POST /api/action                            |
-  |  { publicKey, content, signature }           |
+  |  Authorization: DPoP &lt;access_token&gt;          |
+  |  DPoP: &lt;proof, with ath&gt;                     |
+  |  Body: { business data }                     |
   |---------------------------------------------&gt;|
   |  { ok }                                      |
   |&lt;---------------------------------------------|
@@ -189,79 +197,132 @@ agent                                         service
             <p>agents SHOULD check for <code>/.well-known/welcome.md</code> on any service they want to interact with. the presence of this file indicates the service supports agent-initiated signup.</p>
 
             <h3>2. identity generation</h3>
-            <p>the agent generates an RSA-4096 keypair. the public key becomes the agent's identity on this service. the private key MUST be stored securely and never transmitted.</p>
-            <p>agents MAY reuse the same keypair across multiple services. this creates a portable identity — the same public key is recognizable across services. agents MAY also generate a unique keypair per service for isolation.</p>
+            <p>the agent generates a keypair using one of the algorithms listed in the service's requirements section. the public key becomes the agent's identity on this service. the private key MUST be stored securely and never transmitted.</p>
+            <p>agents MAY reuse the same keypair across multiple services (portable identity) or generate a unique keypair per service (isolated identity).</p>
 
             <div class="note">
                 <strong>why RSA-4096?</strong> generating an RSA-4096 keypair takes real compute (~0.5-2 seconds). this creates a natural proof-of-work that makes mass account creation expensive without requiring rate limiting infrastructure. verification is fast — the asymmetry benefits the service.
             </div>
 
             <h3>3. terms retrieval</h3>
-<pre>{
-  "publicKey": "-----BEGIN PUBLIC KEY-----\nMIICIjANBg...\n-----END PUBLIC KEY-----"
-}</pre>
-            <p>the agent POSTs its public key to the TOS endpoint. the server validates the key (must be valid PEM-encoded RSA, exactly 4096 bits, not already registered) and returns the exact TOS text the agent must sign.</p>
-            <p>the server stores this key-to-TOS mapping temporarily. this ensures the agent signs the exact text the server issued — no tampering possible.</p>
+<pre>POST /tos HTTP/1.1
+Host: example.com
+DPoP: eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IlJTMjU2IiwiandrIjp7Imt0eSI6IlJTQSIsIm4iOiIuLi4iLCJlIjoiQVFBQiJ9fQ.eyJqdGkiOiJ1bmlxdWUtaWQiLCJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9leGFtcGxlLmNvbS90b3MiLCJpYXQiOjE3MTAwMDAwMDB9.signature</pre>
+            <p>the agent sends <code>POST /tos</code> with a DPoP proof in the <code>DPoP</code> HTTP header. the DPoP proof is a JWT containing the agent's public key as a JWK in its header, per <a href="https://www.rfc-editor.org/rfc/rfc9449#section-4">RFC 9449 section 4</a>. no request body is needed — the key is in the proof.</p>
+            <p>the server validates the key (correct algorithm, sufficient key size) and returns the terms of service text:</p>
 <pre>{
   "tos": "terms of service text that the agent must sign..."
 }</pre>
 
-            <h3>4. consent</h3>
-            <p>the agent signs the TOS text with its private key using RSA-SHA256 (PKCS#1 v1.5). the result is base64-encoded.</p>
-            <p>this signature is cryptographic proof of consent. it proves:</p>
-            <ul>
-                <li>the holder of this specific private key</li>
-                <li>agreed to this specific text</li>
-                <li>at this specific time (bounded by the server's TOS issuance timestamp)</li>
-            </ul>
-            <p>this is stronger than clicking "I agree" — it's non-repudiable and independently verifiable.</p>
+            <h3>4. consent and access token generation</h3>
+            <p>the agent performs two operations locally:</p>
+            <p><strong>sign the ToS text</strong> — a direct signature over the ToS text bytes using the agent's private key and the same algorithm as the DPoP proof. the signature is base64url-encoded.</p>
+            <p><strong>generate a self-signed access token</strong> — a JWT signed with the agent's private key:</p>
+<pre>HEADER: {"typ": "at+jwt", "alg": "RS256"}
+PAYLOAD: {
+  "jti": "&lt;unique identifier&gt;",
+  "tos_hash": "&lt;base64url-encoded SHA-256 of the ToS text&gt;",
+  "iat": &lt;unix timestamp&gt;
+}</pre>
+            <p>the <code>tos_hash</code> binds the access token to the specific terms the agent consented to. this binding is what enables automatic re-consent — when terms change, existing tokens become invalid.</p>
+            <p>this pair — the ToS signature plus the self-signed access token — is cryptographic proof of consent. it proves the holder of this specific private key agreed to this specific text, with the consent embedded in the token itself.</p>
 
             <h3>5. registration</h3>
-<pre>{
-  "publicKey": "-----BEGIN PUBLIC KEY-----\nMIICIjANBg...\n-----END PUBLIC KEY-----",
-  "signature": "base64-encoded-RSA-SHA256-signature-over-TOS-text",
+<pre>POST /api/signup HTTP/1.1
+Host: example.com
+DPoP: &lt;proof JWT, no ath&gt;
+Content-Type: application/json
+
+{
+  "tos_signature": "base64url-encoded-signature-of-tos-text",
+  "access_token": "eyJ0eXAiOiJhdCtqd3QiLC...",
   "handle": "chosen-handle"
 }</pre>
-            <p>the agent POSTs its public key, the signature over the TOS text, and a chosen handle to the signup endpoint.</p>
-            <p>the server verifies the signature against the stored TOS text, creates the account, and deletes the pending TOS record (preventing replay). the handle must be unique and conform to the service's handle format.</p>
+            <p>the agent sends a DPoP proof, the ToS signature, the self-signed access token, and any service-specific fields to the signup endpoint.</p>
+            <p>the server validates the DPoP proof, verifies the ToS signature against the current ToS text, validates the access token (signature, tos_hash), and creates the account. the server returns the approved access token:</p>
 <pre>{
-  "ok": true,
-  "accountId": 1,
+  "access_token": "eyJ0eXAiOiJhdCtqd3QiLC...",
+  "token_type": "DPoP",
   "handle": "chosen-handle"
 }</pre>
+            <p>the server MAY return the agent's self-signed access token unchanged, or MAY return a different server-issued access token. the agent MUST use whichever access token the server returns.</p>
 
             <h3>6. authenticated requests</h3>
-            <p>after enrollment, every API request includes the public key and a signature over the request content:</p>
-<pre>{
-  "publicKey": "-----BEGIN PUBLIC KEY-----\nMIICIjANBg...\n-----END PUBLIC KEY-----",
-  "content": "the request payload",
-  "signature": "base64-encoded-RSA-SHA256-signature-over-content"
-}</pre>
-            <p>the server looks up the account by public key and verifies the signature. no sessions, no tokens, no cookies. every request is self-authenticating.</p>
+<pre>POST /api/action HTTP/1.1
+Host: example.com
+Authorization: DPoP &lt;access_token&gt;
+DPoP: &lt;proof JWT with ath&gt;
+Content-Type: application/json
+
+{"business": "data"}</pre>
+            <p>after enrollment, API requests use standard DPoP authentication. the access token goes in the <code>Authorization</code> header. the DPoP proof includes an <code>ath</code> claim — the base64url-encoded SHA-256 hash of the access token string — binding each proof to the specific access token per <a href="https://www.rfc-editor.org/rfc/rfc9449#section-4.2">RFC 9449 section 4.2</a>.</p>
+            <p>request bodies contain only business data. authentication is entirely in HTTP headers.</p>
+        </section>
+
+        <section id="access-token">
+            <h2>access token</h2>
+
+            <h3>self-signed (stateless)</h3>
+            <p>when the server returns the agent's self-signed access token unchanged, no server signing key is needed. on subsequent requests, the server:</p>
+            <ol>
+                <li>validates the DPoP proof per RFC 9449 section 4.3</li>
+                <li>verifies the access token signature using the JWK from the DPoP proof — the same key MUST sign both</li>
+                <li>checks <code>tos_hash</code> in the access token matches SHA-256 of the server's current ToS text</li>
+                <li>checks <code>ath</code> in the DPoP proof matches SHA-256 of the access token string</li>
+                <li>processes the request</li>
+            </ol>
+            <p>no stored state is required beyond the current ToS text. services MAY store additional account data (profiles, service-specific state) while still using stateless authentication.</p>
+
+            <h3>server-issued (stateful)</h3>
+            <p>a server MAY replace the agent's self-signed token with its own at registration time. server-issued tokens follow standard RFC 9449 token binding — the token contains a <code>cnf.jkt</code> claim (<a href="https://www.rfc-editor.org/rfc/rfc7638">JWK SHA-256 Thumbprint</a>) binding it to the agent's key.</p>
+        </section>
+
+        <section id="tos-gated">
+            <h2>ToS-gated validity</h2>
+            <p>the <code>tos_hash</code> claim in the access token creates an automatic re-consent mechanism:</p>
+            <ul>
+                <li>on each request, the server computes SHA-256 of the current ToS text and compares it to <code>tos_hash</code> in the access token</li>
+                <li>if they match: the token is valid — the agent consented to the current terms</li>
+                <li>if they don't match: the ToS has changed — the server rejects the request:</li>
+            </ul>
+<pre>HTTP/1.1 401 Unauthorized
+Content-Type: application/json
+
+{"error": "tos_changed"}</pre>
+            <p>the agent re-consents by repeating the enrollment flow from step 3 (terms retrieval). if the agent's key is already registered, the signup endpoint treats the request as a re-consent — validate the new ToS signature and return a new access token without creating a duplicate account.</p>
+            <p>no token revocation infrastructure is needed. updating the ToS text invalidates all existing tokens.</p>
         </section>
 
         <section id="cryptography">
             <h2>cryptographic requirements</h2>
             <table class="field-table">
                 <tr>
-                    <td>key algorithm</td>
-                    <td>RSA</td>
+                    <td>DPoP proof format</td>
+                    <td>JWT with <code>typ: dpop+jwt</code> per <a href="https://www.rfc-editor.org/rfc/rfc9449">RFC 9449</a></td>
                 </tr>
                 <tr>
-                    <td>key size</td>
-                    <td>4096 bits (exactly)</td>
+                    <td>access token format</td>
+                    <td>JWT with <code>typ: at+jwt</code></td>
                 </tr>
                 <tr>
-                    <td>signature algorithm</td>
-                    <td>RSA-SHA256 (PKCS#1 v1.5)</td>
+                    <td>algorithm</td>
+                    <td>RS256 (RSASSA-PKCS1-v1_5 with SHA-256)</td>
+                </tr>
+                <tr>
+                    <td>minimum key size</td>
+                    <td>4096 bits (RSA)</td>
                 </tr>
                 <tr>
                     <td>key encoding</td>
-                    <td>PEM (PKIX/SPKI format for public keys)</td>
+                    <td>JWK (in DPoP proof header)</td>
                 </tr>
                 <tr>
-                    <td>signature encoding</td>
-                    <td>base64</td>
+                    <td>JWK thumbprint</td>
+                    <td>SHA-256, per <a href="https://www.rfc-editor.org/rfc/rfc7638">RFC 7638</a></td>
+                </tr>
+                <tr>
+                    <td>hash encoding</td>
+                    <td>base64url (no padding)</td>
                 </tr>
             </table>
         </section>
@@ -270,64 +331,47 @@ agent                                         service
             <h2>implementation guide</h2>
 
             <h3>for services</h3>
-            <p>a minimum viable welcome mat requires three things:</p>
+            <p>a minimum welcome mat implementation requires:</p>
             <ol>
-                <li><strong>a <code>/.well-known/welcome.md</code> file</strong> — the discovery endpoint. see <a href="https://github.com/solpbc/welcome-mat/blob/main/examples/welcome.md">example</a>.</li>
-                <li><strong>a TOS endpoint</strong> — accepts a public key, validates it, stores it temporarily with the TOS text, and returns the terms.</li>
-                <li><strong>a signup endpoint</strong> — accepts public key + signed TOS + handle, verifies the signature against the stored TOS text, creates the account.</li>
+                <li><strong>a <code>/.well-known/welcome.md</code> file</strong> — the discovery endpoint, declaring supported DPoP algorithms, minimum key sizes, endpoints, and signup requirements.</li>
+                <li><strong>a terms endpoint</strong> — validates the DPoP proof, returns the ToS text.</li>
+                <li><strong>a signup endpoint</strong> — validates the DPoP proof, verifies the ToS signature, validates the proposed access token, returns the approved access token.</li>
             </ol>
 
-            <h3>key validation</h3>
-            <p>the server MUST validate on TOS retrieval:</p>
+            <h3>DPoP proof validation</h3>
+            <p>follow <a href="https://www.rfc-editor.org/rfc/rfc9449#section-4.3">RFC 9449 section 4.3</a>:</p>
             <ul>
-                <li>key is valid PEM-encoded RSA public key</li>
-                <li>key is exactly 4096 bits</li>
-                <li>key is not already registered (unique identity)</li>
+                <li><code>typ</code> is <code>dpop+jwt</code></li>
+                <li><code>alg</code> is a supported algorithm</li>
+                <li><code>jwk</code> contains a valid public key meeting size requirements</li>
+                <li>signature is valid</li>
+                <li><code>htm</code> matches the HTTP method</li>
+                <li><code>htu</code> matches the request URL (without query/fragment)</li>
+                <li><code>iat</code> is recent</li>
+                <li>when an access token is present: <code>ath</code> matches SHA-256 of the access token string</li>
             </ul>
 
-            <h3>TOS flow internals</h3>
-            <p>the TOS endpoint creates a temporary record linking the submitted public key to the exact TOS text. when signup completes, this record is deleted — the TOS request is single-use, preventing replay attacks.</p>
-            <p>if the same public key submits a new TOS request, the previous one is replaced.</p>
+            <h3>JWK thumbprint</h3>
+            <p>the JWK thumbprint (<a href="https://www.rfc-editor.org/rfc/rfc7638">RFC 7638</a>) is used as the canonical account identifier. for RSA keys, the canonical JSON is <code>{"e":"...","kty":"RSA","n":"..."}</code> (alphabetical order, no whitespace), then SHA-256 and base64url-encode.</p>
 
-            <h3>signature verification</h3>
-            <p>on signup, the server:</p>
-            <ol>
-                <li>looks up the pending TOS record for this public key</li>
-                <li>verifies the RSA-SHA256 signature against the stored TOS text</li>
-                <li>if valid: creates account, deletes pending record</li>
-                <li>if invalid: rejects with 400</li>
-            </ol>
-
-            <p>on authenticated requests, the server:</p>
-            <ol>
-                <li>looks up the account by public key</li>
-                <li>verifies the RSA-SHA256 signature against the request content field</li>
-                <li>if valid: processes request</li>
-                <li>if invalid: rejects with 401</li>
-            </ol>
-
-            <h3>handle rules</h3>
-            <p>handles SHOULD be:</p>
-            <ul>
-                <li>lowercase alphanumeric with dots and hyphens allowed</li>
-                <li>must start and end with an alphanumeric character</li>
-                <li>unique across the service</li>
-                <li>chosen by the agent (not assigned by the service)</li>
-            </ul>
+            <h3>re-consent</h3>
+            <p>when the ToS text changes, all existing access tokens become invalid (their <code>tos_hash</code> won't match). the signup endpoint SHOULD accept re-registration from agents whose keys are already known — validate the new ToS signature and return a new access token without creating a duplicate account.</p>
 
             <h3>for agents</h3>
             <p>to sign up for a service with a welcome mat:</p>
             <ol>
                 <li>fetch <code>/.well-known/welcome.md</code> — read requirements and endpoints</li>
-                <li>generate an RSA-4096 keypair (or reuse an existing one)</li>
-                <li>POST your public key to the TOS endpoint</li>
-                <li>sign the returned TOS text: <code>openssl dgst -sha256 -sign private.pem tos.txt | base64</code></li>
-                <li>POST public key + signature + handle to the signup endpoint</li>
-                <li>store your keypair securely — your private key is your identity</li>
+                <li>generate a keypair matching the service's algorithm requirements</li>
+                <li>create a DPoP proof JWT and <code>POST</code> to the terms endpoint</li>
+                <li>sign the returned ToS text with your private key</li>
+                <li>generate a self-signed access token JWT with <code>tos_hash</code> = base64url(SHA-256(ToS text))</li>
+                <li><code>POST</code> to the signup endpoint with DPoP proof, <code>tos_signature</code>, <code>access_token</code>, and any service-specific fields</li>
+                <li>store the returned <code>access_token</code> — use it in the <code>Authorization: DPoP &lt;token&gt;</code> header on all subsequent requests</li>
+                <li>on 401 with <code>"error": "tos_changed"</code>, re-consent by repeating steps 3–7</li>
             </ol>
 
             <div class="note">
-                <strong>key = identity.</strong> there is no key rotation mechanism in this version of the spec. if you lose your private key, you lose access to the account. agents SHOULD store keys securely and MAY generate unique keys per service.
+                <strong>key = identity.</strong> there is no key rotation mechanism in this version of the spec. if you lose your private key, you lose access to the account. agents SHOULD store keys securely.
             </div>
 
         </section>
@@ -335,21 +379,20 @@ agent                                         service
         <section id="security">
             <h2>security considerations</h2>
             <ul>
-                <li><strong>TLS required.</strong> all endpoints MUST be served over HTTPS. the welcome.md file, TOS endpoint, and signup endpoint all transmit public keys that must not be tampered with in transit.</li>
-                <li><strong>no private key transmission.</strong> private keys never leave the agent. only public keys and signatures are transmitted.</li>
-                <li><strong>replay prevention.</strong> TOS records are single-use — deleted on successful signup. this prevents an attacker from replaying a captured signup request.</li>
-                <li><strong>key uniqueness.</strong> each public key maps to exactly one account. the server enforces this with a unique constraint.</li>
-                <li><strong>proof-of-work.</strong> RSA-4096 key generation is computationally expensive (~0.5-2 seconds), making automated mass account creation naturally costly.</li>
+                <li><strong>TLS required.</strong> all endpoints MUST be served over HTTPS.</li>
+                <li><strong>no private key transmission.</strong> private keys never leave the agent. only public keys (in DPoP proof JWK headers) and signatures are transmitted.</li>
+                <li><strong>DPoP replay protection.</strong> DPoP proofs are bound to a specific HTTP method and URL. see <a href="https://www.rfc-editor.org/rfc/rfc9449">RFC 9449</a> for replay mitigation strategies including <code>jti</code> tracking and server-provided nonces.</li>
+                <li><strong>self-signed AT limitations.</strong> self-signed access tokens allow agents to update their <code>tos_hash</code> without actually re-reading the ToS. services requiring strict re-consent enforcement should issue server-signed tokens.</li>
+                <li><strong>ToS signature replay.</strong> the ToS signature is over the ToS text only. services SHOULD handle re-registration explicitly to prevent replay of captured signup requests.</li>
             </ul>
         </section>
 
         <section id="future">
             <h2>future extensions</h2>
-            <p>these are acknowledged directions for future versions of the spec. they are not part of v0.1.0.</p>
+            <p>these are acknowledged directions for future versions of the spec. they are not part of v1.0.</p>
             <ul>
                 <li><strong>key rotation</strong> — a mechanism for agents to rotate keys while maintaining account continuity.</li>
                 <li><strong>delegation chains</strong> — a way for agents to declare who they're acting on behalf of (e.g., a principal agent delegating to sub-agents).</li>
-                <li><strong>algorithm negotiation</strong> — support for additional key algorithms (ed25519, etc.) while maintaining RSA-4096 as the mandatory baseline.</li>
                 <li><strong>IANA registration</strong> — formal registration of <code>/.well-known/welcome.md</code> per <a href="https://www.rfc-editor.org/rfc/rfc8615">RFC 8615</a>.</li>
             </ul>
         </section>

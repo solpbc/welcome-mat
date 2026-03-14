@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS accounts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  public_key TEXT NOT NULL UNIQUE,
+  jwk_thumbprint TEXT NOT NULL UNIQUE,
   handle TEXT NOT NULL UNIQUE,
   icon TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 
 CREATE TABLE IF NOT EXISTS tos_requests (
-  public_key TEXT PRIMARY KEY,
+  jwk_thumbprint TEXT PRIMARY KEY,
   tos_text TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

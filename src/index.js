@@ -25,9 +25,9 @@ a demo service for trying the welcome mat protocol. sign up, pick a fun emoji, a
 
 ## requirements
 
-- key type: RSA
-- key size: 4096
-- signature algorithm: RSA-SHA256
+- protocol: welcome mat v1 (DPoP)
+- dpop algorithms: RS256
+- minimum key size: 4096 (RSA)
 
 ## endpoints
 
@@ -35,6 +35,10 @@ a demo service for trying the welcome mat protocol. sign up, pick a fun emoji, a
 - signup: POST https://welcome-m.at/api/signup
 - profile: POST https://welcome-m.at/api/profile
 - wall: GET https://welcome-m.at/
+
+## signup requirements
+
+- handle: required
 
 ## handle format
 
@@ -45,15 +49,15 @@ regex: \`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$\`
 
 ### 1. get terms
 
-POST /tos with your public key:
+POST /tos with a DPoP proof header (your public key is in the proof's JWK header):
 
-\`\`\`json
-{
-  "publicKey": "-----BEGIN PUBLIC KEY-----\\n...\\n-----END PUBLIC KEY-----"
-}
+\`\`\`
+POST /tos HTTP/1.1
+Host: welcome-m.at
+DPoP: <proof JWT — typ dpop+jwt, no ath>
 \`\`\`
 
-response:
+no request body. response:
 
 \`\`\`json
 {
@@ -63,14 +67,28 @@ response:
 
 ### 2. sign up
 
-sign the TOS text with your private key using RSA-SHA256, then:
+sign the ToS text with your private key (RS256). generate a self-signed access token JWT:
 
-POST /api/signup:
+\`\`\`
+HEADER: {"typ": "at+jwt", "alg": "RS256"}
+PAYLOAD: {
+  "jti": "<unique id>",
+  "tos_hash": "<base64url SHA-256 of ToS text>",
+  "iat": <unix timestamp>
+}
+\`\`\`
 
-\`\`\`json
+then POST /api/signup:
+
+\`\`\`
+POST /api/signup HTTP/1.1
+Host: welcome-m.at
+DPoP: <proof JWT — no ath>
+Content-Type: application/json
+
 {
-  "publicKey": "-----BEGIN PUBLIC KEY-----\\n...\\n-----END PUBLIC KEY-----",
-  "signature": "base64-encoded-signature",
+  "tos_signature": "base64url-encoded-signature-of-tos-text",
+  "access_token": "eyJ0eXAiOiJhdCtqd3QiLC...",
   "handle": "your-chosen-handle"
 }
 \`\`\`
@@ -79,108 +97,226 @@ response:
 
 \`\`\`json
 {
-  "ok": true,
-  "accountId": 1,
+  "access_token": "eyJ0eXAiOiJhdCtqd3QiLC...",
+  "token_type": "DPoP",
   "handle": "your-chosen-handle"
 }
 \`\`\`
 
 ### 3. set your icon
 
-sign the JSON content string with your private key, then:
+\`\`\`
+POST /api/profile HTTP/1.1
+Host: welcome-m.at
+Authorization: DPoP <access_token>
+DPoP: <proof JWT — with ath = base64url(SHA-256(access_token))>
+Content-Type: application/json
 
-POST /api/profile:
-
-\`\`\`json
-{
-  "publicKey": "-----BEGIN PUBLIC KEY-----\\n...\\n-----END PUBLIC KEY-----",
-  "content": "{\\"icon\\":\\"🎪\\"}",
-  "signature": "base64-encoded-signature-over-content-string"
-}
+{"icon": "🎪"}
 \`\`\`
 
 response:
 
 \`\`\`json
-{
-  "ok": true,
-  "icon": "🎪"
-}
+{"ok": true, "icon": "🎪"}
 \`\`\`
 
 ## rate limits
 
-- signup: 1 per public key (naturally enforced)
+- signup: 1 per key (naturally enforced)
 
 ## terms of service
 
 see POST /tos endpoint for the full terms text.
 `;
 
-// --- Crypto utilities ---
+// --- Base64url utilities ---
 
-function pemToDer(pem) {
-  const lines = pem.trim().split('\n');
-  const base64 = lines.filter(l => !l.startsWith('-----')).join('');
-  const binary = atob(base64);
+function base64urlEncode(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function base64urlDecode(str) {
+  const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
+  const binary = atob(padded);
   const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
 
-async function importPublicKey(pem) {
-  const der = pemToDer(pem);
+// --- JWT utilities ---
+
+function parseJwt(token) {
+  const parts = token.split('.');
+  if (parts.length !== 3) throw new Error('invalid JWT: expected 3 parts');
+  const header = JSON.parse(new TextDecoder().decode(base64urlDecode(parts[0])));
+  const payload = JSON.parse(new TextDecoder().decode(base64urlDecode(parts[1])));
+  return { header, payload, signature: parts[2], signingInput: parts[0] + '.' + parts[1] };
+}
+
+// --- JWK Thumbprint (RFC 7638) ---
+
+async function jwkThumbprint(jwk) {
+  // For RSA: canonical JSON with members in alphabetical order
+  const canonical = JSON.stringify({ e: jwk.e, kty: 'RSA', n: jwk.n });
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
+  return base64urlEncode(hash);
+}
+
+// --- Key import and validation ---
+
+async function importJwkKey(jwk) {
   return crypto.subtle.importKey(
-    'spki',
-    der,
+    'jwk',
+    { kty: jwk.kty, n: jwk.n, e: jwk.e },
     { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
     true,
     ['verify']
   );
 }
 
-async function validateRsa4096(pem) {
+async function validateAndImportKey(jwk) {
+  if (!jwk || jwk.kty !== 'RSA') throw new Error('key must be RSA');
+  if (!jwk.n || !jwk.e) throw new Error('invalid RSA key: missing n or e');
+
   let key;
   try {
-    key = await importPublicKey(pem);
+    key = await importJwkKey(jwk);
   } catch {
-    throw new Error('invalid public key — must be PEM-encoded RSA 4096');
+    throw new Error('invalid RSA public key');
   }
 
-  const jwk = await crypto.subtle.exportKey('jwk', key);
-  // base64url decode the modulus to check key size
-  const b64 = jwk.n.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
+  // Verify key size by checking modulus length
+  const exported = await crypto.subtle.exportKey('jwk', key);
+  const nBase64 = exported.n.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = nBase64 + '='.repeat((4 - nBase64.length % 4) % 4);
   const modulusBits = atob(padded).length * 8;
 
   if (modulusBits !== 4096) {
     throw new Error(`key must be 4096-bit RSA (got ${modulusBits}-bit)`);
   }
+
   return key;
 }
 
-async function verifySignature(key, data, signatureBase64) {
-  const encoder = new TextEncoder();
-  const sigBinary = atob(signatureBase64);
-  const sigBytes = new Uint8Array(sigBinary.length);
-  for (let i = 0; i < sigBinary.length; i++) {
-    sigBytes[i] = sigBinary.charCodeAt(i);
+// --- SHA-256 helper ---
+
+async function sha256Base64url(data) {
+  const hash = await crypto.subtle.digest(
+    'SHA-256',
+    typeof data === 'string' ? new TextEncoder().encode(data) : data
+  );
+  return base64urlEncode(hash);
+}
+
+// --- DPoP proof validation (RFC 9449 section 4.3) ---
+
+async function validateDpopProof(dpopHeader, method, url, accessToken) {
+  if (!dpopHeader) throw new Error('missing DPoP header');
+
+  let jwt;
+  try {
+    jwt = parseJwt(dpopHeader);
+  } catch {
+    throw new Error('invalid DPoP proof: malformed JWT');
   }
-  return crypto.subtle.verify(
+
+  const { header, payload, signature, signingInput } = jwt;
+
+  // Header checks
+  if (header.typ !== 'dpop+jwt') throw new Error('invalid DPoP proof: typ must be dpop+jwt');
+  if (header.alg !== 'RS256') throw new Error('invalid DPoP proof: alg must be RS256');
+  if (!header.jwk) throw new Error('invalid DPoP proof: missing jwk');
+
+  // Import and validate key (RSA-4096)
+  const key = await validateAndImportKey(header.jwk);
+
+  // Payload checks
+  if (!payload.jti) throw new Error('invalid DPoP proof: missing jti');
+  if (payload.htm !== method) throw new Error(`invalid DPoP proof: htm must be ${method}`);
+
+  // Validate htu (without query/fragment)
+  const reqUrl = new URL(url);
+  const expectedHtu = reqUrl.origin + reqUrl.pathname;
+  if (payload.htu !== expectedHtu) {
+    throw new Error('invalid DPoP proof: htu does not match request URL');
+  }
+
+  if (!payload.iat || typeof payload.iat !== 'number') {
+    throw new Error('invalid DPoP proof: missing or invalid iat');
+  }
+
+  // Check iat is recent (within 5 minutes)
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - payload.iat) > 300) {
+    throw new Error('invalid DPoP proof: iat too far from current time');
+  }
+
+  // When access token present, verify ath
+  if (accessToken) {
+    if (!payload.ath) throw new Error('invalid DPoP proof: missing ath');
+    const expectedAth = await sha256Base64url(accessToken);
+    if (payload.ath !== expectedAth) {
+      throw new Error('invalid DPoP proof: ath does not match access token');
+    }
+  }
+
+  // Verify signature
+  const sigBytes = base64urlDecode(signature);
+  const valid = await crypto.subtle.verify(
     'RSASSA-PKCS1-v1_5',
     key,
     sigBytes,
-    encoder.encode(data)
+    new TextEncoder().encode(signingInput)
   );
+
+  if (!valid) throw new Error('invalid DPoP proof: signature verification failed');
+
+  return { jwk: header.jwk, key, thumbprint: await jwkThumbprint(header.jwk) };
+}
+
+// --- Access token validation (self-signed mode) ---
+
+async function validateAccessToken(accessTokenStr, dpopKey) {
+  let jwt;
+  try {
+    jwt = parseJwt(accessTokenStr);
+  } catch {
+    throw new Error('invalid access token: malformed JWT');
+  }
+
+  const { header, payload, signature, signingInput } = jwt;
+
+  if (header.typ !== 'at+jwt') throw new Error('invalid access token: typ must be at+jwt');
+  if (header.alg !== 'RS256') throw new Error('invalid access token: alg must be RS256');
+
+  if (!payload.tos_hash) throw new Error('invalid access token: missing tos_hash');
+
+  // Verify tos_hash against current ToS
+  const expectedTosHash = await sha256Base64url(TOS_TEXT);
+  if (payload.tos_hash !== expectedTosHash) {
+    throw new Error('tos_changed');
+  }
+
+  // Verify signature using the DPoP proof's key (AT has no jwk in header)
+  const sigBytes = base64urlDecode(signature);
+  const valid = await crypto.subtle.verify(
+    'RSASSA-PKCS1-v1_5',
+    dpopKey,
+    sigBytes,
+    new TextEncoder().encode(signingInput)
+  );
+
+  if (!valid) throw new Error('invalid access token: signature verification failed');
+
+  return payload;
 }
 
 // --- Validation ---
-
-function normalizeKey(pem) {
-  return pem.trim() + '\n';
-}
 
 function isValidHandle(handle) {
   return /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(handle) && handle.length <= 64;
@@ -358,6 +494,15 @@ function renderWall(agents) {
 </html>`;
 }
 
+// --- Auth helpers ---
+
+function extractBearerToken(request) {
+  const auth = request.headers.get('Authorization');
+  if (!auth) return null;
+  const match = auth.match(/^DPoP\s+(.+)$/i);
+  return match ? match[1] : null;
+}
+
 // --- Route handlers ---
 
 async function handleTos(request, env) {
@@ -371,39 +516,23 @@ async function handleTos(request, env) {
     return Response.json({ error: 'method not allowed' }, { status: 405 });
   }
 
-  let body;
+  // Validate DPoP proof (no access token on this endpoint)
+  let dpop;
   try {
-    body = await request.json();
-  } catch {
-    return Response.json({ error: 'invalid JSON body' }, { status: 400 });
-  }
-
-  if (!body.publicKey || typeof body.publicKey !== 'string') {
-    return Response.json({ error: 'missing publicKey field' }, { status: 400 });
-  }
-
-  const pubKey = normalizeKey(body.publicKey);
-
-  // Validate RSA-4096
-  try {
-    await validateRsa4096(pubKey);
+    dpop = await validateDpopProof(
+      request.headers.get('DPoP'),
+      'POST',
+      request.url,
+      null
+    );
   } catch (e) {
     return Response.json({ error: e.message }, { status: 400 });
   }
 
-  // Check if key is already registered
-  const existing = await env.DB.prepare(
-    'SELECT id FROM accounts WHERE public_key = ?'
-  ).bind(pubKey).first();
-
-  if (existing) {
-    return Response.json({ error: 'this key is already registered' }, { status: 409 });
-  }
-
-  // Store TOS request (upsert)
+  // Store TOS request (upsert) for audit
   await env.DB.prepare(
-    "INSERT OR REPLACE INTO tos_requests (public_key, tos_text, created_at) VALUES (?, ?, datetime('now'))"
-  ).bind(pubKey, TOS_TEXT).run();
+    "INSERT OR REPLACE INTO tos_requests (jwk_thumbprint, tos_text, created_at) VALUES (?, ?, datetime('now'))"
+  ).bind(dpop.thumbprint, TOS_TEXT).run();
 
   return Response.json({ tos: TOS_TEXT });
 }
@@ -413,6 +542,20 @@ async function handleSignup(request, env) {
     return Response.json({ error: 'method not allowed' }, { status: 405 });
   }
 
+  // Validate DPoP proof (no access token — not enrolled yet)
+  let dpop;
+  try {
+    dpop = await validateDpopProof(
+      request.headers.get('DPoP'),
+      'POST',
+      request.url,
+      null
+    );
+  } catch (e) {
+    return Response.json({ error: e.message }, { status: 400 });
+  }
+
+  // Parse body
   let body;
   try {
     body = await request.json();
@@ -420,11 +563,11 @@ async function handleSignup(request, env) {
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  if (!body.publicKey || typeof body.publicKey !== 'string') {
-    return Response.json({ error: 'missing publicKey field' }, { status: 400 });
+  if (!body.tos_signature || typeof body.tos_signature !== 'string') {
+    return Response.json({ error: 'missing tos_signature field' }, { status: 400 });
   }
-  if (!body.signature || typeof body.signature !== 'string') {
-    return Response.json({ error: 'missing signature field' }, { status: 400 });
+  if (!body.access_token || typeof body.access_token !== 'string') {
+    return Response.json({ error: 'missing access_token field' }, { status: 400 });
   }
   if (!body.handle || typeof body.handle !== 'string') {
     return Response.json({ error: 'missing handle field' }, { status: 400 });
@@ -436,57 +579,71 @@ async function handleSignup(request, env) {
     );
   }
 
-  const pubKey = normalizeKey(body.publicKey);
-
-  // Look up pending TOS request
-  const tosRow = await env.DB.prepare(
-    'SELECT tos_text FROM tos_requests WHERE public_key = ?'
-  ).bind(pubKey).first();
-
-  if (!tosRow) {
-    return Response.json({ error: 'no pending TOS request for this key — POST to /tos first' }, { status: 400 });
+  // Verify ToS signature against current ToS text
+  try {
+    const sigBytes = base64urlDecode(body.tos_signature);
+    const valid = await crypto.subtle.verify(
+      'RSASSA-PKCS1-v1_5',
+      dpop.key,
+      sigBytes,
+      new TextEncoder().encode(TOS_TEXT)
+    );
+    if (!valid) {
+      return Response.json({ error: 'ToS signature verification failed' }, { status: 400 });
+    }
+  } catch (e) {
+    if (e.message === 'ToS signature verification failed') throw e;
+    return Response.json({ error: 'ToS signature verification failed' }, { status: 400 });
   }
 
-  // Validate key and verify signature
-  let key;
+  // Validate self-signed access token
   try {
-    key = await validateRsa4096(pubKey);
+    await validateAccessToken(body.access_token, dpop.key);
   } catch (e) {
+    if (e.message === 'tos_changed') {
+      return Response.json({ error: 'tos_changed' }, { status: 401 });
+    }
     return Response.json({ error: e.message }, { status: 400 });
   }
 
-  let valid;
-  try {
-    valid = await verifySignature(key, tosRow.tos_text, body.signature);
-  } catch {
-    return Response.json({ error: 'signature verification failed' }, { status: 400 });
+  // Check if this is a re-consent (thumbprint already registered)
+  const existing = await env.DB.prepare(
+    'SELECT id, handle FROM accounts WHERE jwk_thumbprint = ?'
+  ).bind(dpop.thumbprint).first();
+
+  if (existing) {
+    // Re-consent: clean up TOS request, return existing account with new AT
+    await env.DB.prepare(
+      'DELETE FROM tos_requests WHERE jwk_thumbprint = ?'
+    ).bind(dpop.thumbprint).run();
+
+    return Response.json({
+      access_token: body.access_token,
+      token_type: 'DPoP',
+      handle: existing.handle
+    });
   }
 
-  if (!valid) {
-    return Response.json({ error: 'signature verification failed' }, { status: 400 });
-  }
-
-  // Create account
-  let result;
+  // New account
   try {
-    result = await env.DB.prepare(
-      'INSERT INTO accounts (public_key, handle) VALUES (?, ?)'
-    ).bind(pubKey, body.handle).run();
+    await env.DB.prepare(
+      'INSERT INTO accounts (jwk_thumbprint, handle) VALUES (?, ?)'
+    ).bind(dpop.thumbprint, body.handle).run();
   } catch (e) {
     if (e.message && e.message.includes('UNIQUE')) {
-      return Response.json({ error: 'account or handle already exists' }, { status: 409 });
+      return Response.json({ error: 'handle already taken' }, { status: 409 });
     }
     throw e;
   }
 
-  // Delete TOS request (single-use, prevents replay)
+  // Clean up TOS request
   await env.DB.prepare(
-    'DELETE FROM tos_requests WHERE public_key = ?'
-  ).bind(pubKey).run();
+    'DELETE FROM tos_requests WHERE jwk_thumbprint = ?'
+  ).bind(dpop.thumbprint).run();
 
   return Response.json({
-    ok: true,
-    accountId: result.meta.last_row_id,
+    access_token: body.access_token,
+    token_type: 'DPoP',
     handle: body.handle
   });
 }
@@ -496,6 +653,45 @@ async function handleProfile(request, env) {
     return Response.json({ error: 'method not allowed' }, { status: 405 });
   }
 
+  // Extract access token from Authorization header
+  const accessToken = extractBearerToken(request);
+  if (!accessToken) {
+    return Response.json({ error: 'missing Authorization: DPoP <token> header' }, { status: 401 });
+  }
+
+  // Validate DPoP proof (with ath bound to access token)
+  let dpop;
+  try {
+    dpop = await validateDpopProof(
+      request.headers.get('DPoP'),
+      'POST',
+      request.url,
+      accessToken
+    );
+  } catch (e) {
+    return Response.json({ error: e.message }, { status: 401 });
+  }
+
+  // Validate access token (self-signed, verified with DPoP key)
+  try {
+    await validateAccessToken(accessToken, dpop.key);
+  } catch (e) {
+    if (e.message === 'tos_changed') {
+      return Response.json({ error: 'tos_changed' }, { status: 401 });
+    }
+    return Response.json({ error: e.message }, { status: 401 });
+  }
+
+  // Look up account by JWK thumbprint
+  const account = await env.DB.prepare(
+    'SELECT id FROM accounts WHERE jwk_thumbprint = ?'
+  ).bind(dpop.thumbprint).first();
+
+  if (!account) {
+    return Response.json({ error: 'account not found — sign up first' }, { status: 404 });
+  }
+
+  // Parse body
   let body;
   try {
     body = await request.json();
@@ -503,59 +699,11 @@ async function handleProfile(request, env) {
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  if (!body.publicKey || typeof body.publicKey !== 'string') {
-    return Response.json({ error: 'missing publicKey field' }, { status: 400 });
-  }
-  if (!body.content || typeof body.content !== 'string') {
-    return Response.json({ error: 'missing content field' }, { status: 400 });
-  }
-  if (!body.signature || typeof body.signature !== 'string') {
-    return Response.json({ error: 'missing signature field' }, { status: 400 });
+  if (!body.icon || typeof body.icon !== 'string') {
+    return Response.json({ error: 'missing icon field' }, { status: 400 });
   }
 
-  const pubKey = normalizeKey(body.publicKey);
-
-  // Look up account
-  const account = await env.DB.prepare(
-    'SELECT id, public_key FROM accounts WHERE public_key = ?'
-  ).bind(pubKey).first();
-
-  if (!account) {
-    return Response.json({ error: 'account not found — sign up first' }, { status: 404 });
-  }
-
-  // Verify signature over content
-  let key;
-  try {
-    key = await importPublicKey(pubKey);
-  } catch {
-    return Response.json({ error: 'invalid public key' }, { status: 400 });
-  }
-
-  let valid;
-  try {
-    valid = await verifySignature(key, body.content, body.signature);
-  } catch {
-    return Response.json({ error: 'signature verification failed' }, { status: 400 });
-  }
-
-  if (!valid) {
-    return Response.json({ error: 'signature verification failed' }, { status: 400 });
-  }
-
-  // Parse content JSON
-  let contentData;
-  try {
-    contentData = JSON.parse(body.content);
-  } catch {
-    return Response.json({ error: 'content must be valid JSON' }, { status: 400 });
-  }
-
-  if (!contentData.icon || typeof contentData.icon !== 'string') {
-    return Response.json({ error: 'missing icon field in content' }, { status: 400 });
-  }
-
-  if (!isEmoji(contentData.icon)) {
+  if (!isEmoji(body.icon)) {
     return Response.json(
       { error: 'icon must be an emoji — no text, no numbers, just emoji' },
       { status: 400 }
@@ -565,9 +713,9 @@ async function handleProfile(request, env) {
   // Update profile
   await env.DB.prepare(
     "UPDATE accounts SET icon = ?, updated_at = datetime('now') WHERE id = ?"
-  ).bind(contentData.icon, account.id).run();
+  ).bind(body.icon, account.id).run();
 
-  return Response.json({ ok: true, icon: contentData.icon });
+  return Response.json({ ok: true, icon: body.icon });
 }
 
 // --- Main export ---
