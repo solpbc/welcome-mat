@@ -27,7 +27,7 @@ plain markdown with required and optional sections. the file is both human-reada
 | service name | the H1 heading. identifies the service. |
 | description | a brief paragraph explaining what the service does and what agents can do here. |
 | requirements | protocol version, supported DPoP algorithms, minimum key sizes. |
-| endpoints | URLs for terms retrieval, signup, and service-specific API endpoints. |
+| endpoints | URLs for terms of service (GET) and signup (POST), plus any service-specific API endpoints. |
 | enrollment flow | step-by-step instructions with request/response examples for the complete signup process. |
 
 ### optional sections
@@ -38,7 +38,6 @@ plain markdown with required and optional sections. the file is both human-reada
 | rate limits | request rate limits, cooldown periods, or throttling policies. |
 | pricing | cost information, free tier limits, or payment requirements. |
 | usage policies | acceptable use, content policies, or behavioral expectations. |
-| terms of service | inline ToS text or a link to the full terms. |
 
 ### example
 
@@ -55,18 +54,17 @@ agent                                         service
   |   signup requirements)                       |
   |<---------------------------------------------|
   |                                              |
-  |  POST /tos                                   |
-  |  DPoP: <proof, no ath>                       |
+  |  GET /tos                                    |
   |--------------------------------------------->|
-  |  { tos: "terms text..." }                    |
+  |  terms of service text                       |
   |<---------------------------------------------|
   |                                              |
   |  sign ToS text with private key              |
   |  generate self-signed access token JWT       |
-  |   { tos_hash, iat, jti }                     |
+  |   { tos_hash, aud, cnf, iat, jti }           |
   |                                              |
   |  POST /signup                                |
-  |  DPoP: <proof, no ath>                       |
+  |  DPoP: <proof>                               |
   |  Body: { tos_signature, access_token,        |
   |          ...service-specific fields }         |
   |--------------------------------------------->|
@@ -95,46 +93,47 @@ agents SHOULD check for `/.well-known/welcome.md` on any service they want to in
 
 the agent generates a keypair using one of the algorithms listed in the service's requirements section. the public key becomes the agent's identity on this service. the private key MUST be stored securely and never transmitted.
 
-agents MAY reuse the same keypair across multiple services (portable identity) or generate a unique keypair per service (isolated identity).
+agents MAY reuse the same keypair across multiple services (portable identity) or generate a unique keypair per service (isolated identity). note that key reuse across services enables cross-service correlation via [JWK Thumbprint](https://www.rfc-editor.org/rfc/rfc7638) — agents that need unlinkability SHOULD use unique keys per service.
 
 ### 3. terms retrieval
 
-the agent sends `POST /tos` with a DPoP proof in the `DPoP` HTTP header. the DPoP proof contains the agent's public key as a JWK in its header, per [RFC 9449 section 4](https://www.rfc-editor.org/rfc/rfc9449#section-4).
+the agent fetches the terms of service from the URL specified in the welcome.md endpoints section. this is a plain `GET` request — no authentication required. the terms are a public document.
 
-the server validates the key (correct algorithm, sufficient key size) and returns the terms of service text:
-
-```json
-{
-  "tos": "terms of service text that the agent must sign..."
-}
-```
-
-the DPoP proof on this request has no `ath` claim (there is no access token yet).
+the response body is the canonical text the agent must sign. services SHOULD serve terms as `text/plain` or `text/markdown` for unambiguous agent consumption.
 
 ### 4. consent and access token generation
 
 the agent performs two operations locally:
 
-**sign the ToS text** — a direct signature over the ToS text bytes using the agent's private key and the same algorithm as the DPoP proof. the signature is base64url-encoded.
+**sign the ToS text** — a signature over the UTF-8 encoded bytes of the ToS response body, using the [JWA](https://www.rfc-editor.org/rfc/rfc7518) algorithm that matches the `alg` value the agent will use in its DPoP proofs (e.g., RSASSA-PKCS1-v1_5 with SHA-256 for `RS256`). the signature is base64url-encoded.
 
 **generate a self-signed access token** — a JWT signed with the agent's private key:
 
 ```
-HEADER: {"typ": "at+jwt", "alg": "<algorithm>"}
+HEADER: {"typ": "wm+jwt", "alg": "<algorithm>"}
 PAYLOAD: {
   "jti": "<unique identifier>",
   "tos_hash": "<base64url-encoded SHA-256 of the ToS text>",
+  "aud": "<service origin, e.g. https://example.com>",
+  "cnf": {"jkt": "<JWK SHA-256 Thumbprint per RFC 7638>"},
   "iat": <unix timestamp>
 }
 ```
 
-the `tos_hash` binds the access token to the specific terms the agent consented to.
+| claim | required | description |
+|-------|----------|-------------|
+| `jti` | REQUIRED | unique token identifier |
+| `tos_hash` | REQUIRED | base64url(SHA-256(ToS text)) — binds the token to the specific terms the agent consented to |
+| `aud` | REQUIRED | the service's origin URL — prevents cross-service token confusion |
+| `cnf.jkt` | REQUIRED | JWK SHA-256 Thumbprint ([RFC 7638](https://www.rfc-editor.org/rfc/rfc7638)) of the agent's public key — explicit key binding per [RFC 9449 section 6](https://www.rfc-editor.org/rfc/rfc9449#section-6) |
+| `iat` | REQUIRED | token creation time (unix timestamp) |
+| `exp` | OPTIONAL | expiration time — services MAY require this |
 
 ### 5. registration
 
-the agent sends `POST /signup` with:
+the agent sends `POST /signup` (or the service's configured signup endpoint) with:
 
-- a DPoP proof in the `DPoP` HTTP header (no `ath` — no approved access token yet)
+- a DPoP proof in the `DPoP` HTTP header
 - a JSON body containing:
   - `tos_signature`: the base64url-encoded signature of the ToS text
   - `access_token`: the self-signed access token JWT
@@ -143,15 +142,33 @@ the agent sends `POST /signup` with:
 ```json
 {
   "tos_signature": "base64url-encoded-signature-of-tos-text",
-  "access_token": "eyJ0eXAiOiJhdCtqd3QiLC..."
+  "access_token": "eyJ0eXAiOiJ3bStqd3QiLC..."
+}
+```
+
+the DPoP proof on this request has no `ath` claim. the access token in the body is a *proposed* credential, not an authentication credential — the DPoP proof alone authenticates this request via key possession. the `ath` binding begins on the first authenticated request after enrollment.
+
+the DPoP proof MUST include the following structure per [RFC 9449 section 4.2](https://www.rfc-editor.org/rfc/rfc9449#section-4.2):
+
+```
+HEADER: {
+  "typ": "dpop+jwt",
+  "alg": "<algorithm>",
+  "jwk": <agent's public key as JWK>
+}
+PAYLOAD: {
+  "jti": "<unique proof identifier>",
+  "htm": "<HTTP method, e.g. POST>",
+  "htu": "<HTTP target URI, without query/fragment>",
+  "iat": <unix timestamp>
 }
 ```
 
 the server:
 
-1. validates the DPoP proof per [RFC 9449 section 4.3](https://www.rfc-editor.org/rfc/rfc9449#section-4.3)
+1. validates the DPoP proof per [RFC 9449 section 4.3](https://www.rfc-editor.org/rfc/rfc9449#section-4.3) — including `typ`, `alg`, `jwk`, signature, `jti`, `htm`, `htu`, `iat`
 2. verifies `tos_signature` against the current ToS text using the JWK from the DPoP proof
-3. validates the access token JWT — signature matches the same key, `tos_hash` matches SHA-256 of current ToS text
+3. validates the access token JWT — signature matches the same key, `tos_hash` matches SHA-256 of current ToS text, `aud` matches the service's origin, `cnf.jkt` matches the JWK Thumbprint from the DPoP proof
 4. processes any service-specific signup fields
 5. returns the approved access token:
 
@@ -190,15 +207,19 @@ when the server returns the agent's self-signed access token unchanged, no serve
 
 1. validates the DPoP proof per RFC 9449 section 4.3
 2. verifies the access token signature using the JWK from the DPoP proof — the same key MUST sign both
-3. checks `tos_hash` in the access token matches SHA-256 of the server's current ToS text
-4. checks `ath` in the DPoP proof matches SHA-256 of the access token string
-5. processes the request
+3. checks `aud` matches the service's origin
+4. checks `cnf.jkt` matches the JWK Thumbprint of the key in the DPoP proof
+5. checks `tos_hash` in the access token matches SHA-256 of the server's current ToS text
+6. checks `ath` in the DPoP proof matches SHA-256 of the access token string
+7. processes the request
 
 the server validates the agent's self-signed token using the key presented in the DPoP proof. no stored state is required beyond the current ToS text. services MAY store additional account data (profiles, service-specific state) while still using stateless authentication.
 
+self-signed access tokens allow agents to mint new tokens with updated claims (including `tos_hash`) without going through the signup flow. this is a known property of the self-signed model. services that require enforceable re-consent on ToS changes SHOULD issue server-signed access tokens.
+
 ### server-issued (stateful)
 
-a server MAY replace the agent's self-signed token with its own at registration time. server-issued tokens follow standard RFC 9449 token binding — the token contains a `cnf.jkt` claim ([JWK SHA-256 Thumbprint](https://www.rfc-editor.org/rfc/rfc7638)) binding it to the agent's key. the server MAY include additional claims (subject, roles, expiry, etc.).
+a server MAY replace the agent's self-signed token with its own at registration time. server-issued tokens follow standard RFC 9449 token binding — the token contains a `cnf.jkt` claim ([JWK SHA-256 Thumbprint](https://www.rfc-editor.org/rfc/rfc7638)) binding it to the agent's key. the server MAY include additional claims (subject, roles, expiry, etc.) and can enforce re-consent by controlling when new tokens are issued.
 
 ## ToS-gated validity
 
@@ -219,8 +240,6 @@ the agent re-consents by repeating the enrollment flow from step 3 (terms retrie
 
 no token revocation infrastructure is needed. updating the ToS text invalidates all existing tokens.
 
-for self-signed access tokens, this relies on the agent including the correct `tos_hash`. services requiring stronger re-consent guarantees SHOULD issue server-signed access tokens with the `tos_hash` embedded by the server.
-
 ## implementation guide
 
 ### for services
@@ -228,16 +247,26 @@ for self-signed access tokens, this relies on the agent including the correct `t
 a minimum welcome mat implementation requires:
 
 1. **a `/.well-known/welcome.md` file** — the discovery endpoint, declaring supported algorithms, endpoints, and signup requirements
-2. **a terms endpoint** (e.g., `POST /tos`) — validates the DPoP proof, returns the ToS text
+2. **a terms document** — any URL serving the ToS text, referenced from the welcome.md. a plain `GET` endpoint; no authentication required
 3. **a signup endpoint** (e.g., `POST /signup`) — validates the DPoP proof, verifies the ToS signature, validates the proposed access token, returns the approved access token
 
 #### DPoP proof validation
 
-follow [RFC 9449 section 4.3](https://www.rfc-editor.org/rfc/rfc9449#section-4.3). the key in the DPoP proof's `jwk` header MUST meet the service's algorithm and key size requirements as declared in its welcome.md.
+follow [RFC 9449 section 4.3](https://www.rfc-editor.org/rfc/rfc9449#section-4.3). the server MUST verify:
+
+- `typ` is `dpop+jwt`
+- `alg` is one of the service's supported algorithms
+- `jwk` contains a valid public key meeting the service's requirements
+- the JWT signature is valid
+- `jti` is acceptable (see RFC 9449 for replay mitigation via jti tracking and server-provided nonces)
+- `htm` matches the HTTP method of the request
+- `htu` matches the HTTP target URI (without query and fragment)
+- `iat` is within an acceptable time window
+- when an access token is present: `ath` matches base64url(SHA-256(access token string))
 
 #### ToS signature verification
 
-the ToS signature is a direct signature over the ToS text bytes using the same algorithm and key as the DPoP proof. verify it using the JWK from the DPoP proof.
+the ToS signature is computed using the JWA algorithm identified by the `alg` in the DPoP proof header, applied to the UTF-8 encoded bytes of the ToS text. verify it using the JWK from the DPoP proof.
 
 #### stateless operation
 
@@ -251,9 +280,9 @@ when the ToS text changes, all existing access tokens become invalid (their `tos
 
 1. fetch `/.well-known/welcome.md` — read requirements, endpoints, and signup fields
 2. generate a keypair matching the service's algorithm requirements
-3. create a DPoP proof and `POST` to the terms endpoint
-4. sign the returned ToS text with your private key
-5. generate a self-signed access token JWT: `tos_hash` = base64url(SHA-256(ToS text)), plus `jti` and `iat`
+3. `GET` the terms URL from the welcome.md — read the ToS text
+4. sign the ToS text with your private key (UTF-8 bytes, same JWA algorithm as your DPoP proofs)
+5. generate a self-signed access token JWT: `typ` = `wm+jwt`, `tos_hash` = base64url(SHA-256(ToS text)), `aud` = service origin, `cnf.jkt` = your JWK Thumbprint, plus `jti` and `iat`
 6. `POST` to the signup endpoint with DPoP proof, `tos_signature`, `access_token`, and any service-specific fields from the welcome.md
 7. store the returned `access_token` — use it in the `Authorization: DPoP <token>` header on all subsequent requests
 8. on 401 with `"error": "tos_changed"`, re-consent by repeating steps 3–7
@@ -264,9 +293,10 @@ when the ToS text changes, all existing access tokens become invalid (their `tos
 
 - **TLS required.** all endpoints MUST be served over HTTPS.
 - **no private key transmission.** private keys never leave the agent. only public keys (in DPoP proof JWK headers) and signatures are transmitted.
-- **DPoP replay protection.** DPoP proofs are bound to a specific HTTP method and URL. see [RFC 9449](https://www.rfc-editor.org/rfc/rfc9449) for replay mitigation strategies including `jti` tracking and server-provided nonces.
-- **self-signed AT limitations.** self-signed access tokens allow agents to update their `tos_hash` without actually re-reading the ToS. services requiring strict re-consent enforcement should issue server-signed tokens.
-- **ToS signature replay.** the ToS signature is over the ToS text only. services SHOULD validate that the key is not already registered to prevent replay of captured signup requests, or handle re-registration explicitly.
+- **DPoP replay protection.** DPoP proofs are bound to a specific HTTP method and URL via `htm` and `htu` claims. see [RFC 9449 sections 8 and 11.1](https://www.rfc-editor.org/rfc/rfc9449#section-8) for replay mitigation strategies including server-provided nonces and `jti` tracking.
+- **self-signed access tokens.** self-signed tokens allow agents to mint new tokens without going through the signup flow. this is a property of the self-signed model — the access token is a capability assertion verified by DPoP proof-of-possession, not a server-issued credential. services requiring enforceable re-consent or individual token revocation SHOULD issue server-signed tokens.
+- **key reuse and correlation.** agents that reuse keys across services can be correlated via JWK Thumbprint. agents needing unlinkability should use unique keys per service.
+- **no key rotation in v1.** there is no key rotation mechanism. if a private key is compromised, all accounts using that key are compromised with no recovery path. agents using portable identity across many services should weigh this risk.
 
 ## future extensions
 
