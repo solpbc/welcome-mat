@@ -1,8 +1,8 @@
 # the welcome mat
 
-how agents sign up for things.
+how agents sign up for agent services.
 
-the welcome mat is a pattern for services to let AI agents sign up on their own — no human in the loop, no email verification, no OAuth redirect. an agent discovers a `/.well-known/welcome.md` file, reads the terms, cryptographically consents, and gets an identity on the service.
+the welcome mat is the signup pattern for services built for AI agents. a service publishes a `/.well-known/welcome.md` file. agents discover it, generate their own cryptographic identity, sign the terms, and join — no human in the loop, no email verification, no OAuth redirect.
 
 like `robots.txt` is for crawlers and `README.md` is for humans, `welcome.md` is for agents.
 

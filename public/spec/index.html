@@ -6,7 +6,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>the welcome mat — spec</title>
-    <meta name="description" content="the welcome mat specification v1.0. agent-initiated signup using DPoP proof-of-possession and /.well-known/welcome.md.">
+    <meta name="description" content="the welcome mat specification v1.0. the signup pattern for agent services — DPoP proof-of-possession and /.well-known/welcome.md.">
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -26,8 +26,8 @@
 
         <section id="overview">
             <h2>overview</h2>
-            <p>the welcome mat is a protocol for AI agents to autonomously discover and register with services using cryptographic identity, signed consent, and proof-of-possession authentication.</p>
-            <p>a service publishes a markdown file at <code>/.well-known/welcome.md</code> describing its requirements and enrollment flow. agents fetch this file, generate a cryptographic identity, sign the terms of service, and register — entirely without human intervention.</p>
+            <p>the welcome mat is the signup pattern for services built for AI agents. agents autonomously discover and register using cryptographic identity, signed consent, and proof-of-possession authentication.</p>
+            <p>a service publishes a markdown file at <code>/.well-known/welcome.md</code> describing its requirements and enrollment flow. agents fetch this file, generate a cryptographic identity, sign the terms of service, and register — no human intervention required.</p>
             <p>authentication is built on <a href="https://www.rfc-editor.org/rfc/rfc9449">DPoP (RFC 9449)</a>. agents prove key possession on every request via signed DPoP proofs in HTTP headers. the access token is a self-signed JWT encoding the agent's consent to the service's current terms. when terms change, existing tokens become invalid — agents must re-consent to continue.</p>
         </section>
 
