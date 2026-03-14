@@ -48,7 +48,6 @@ cloudflare workers with D1 and static assets.
 
 ## conventions
 
-- AGPL-3.0-only license (for the site source)
-- the spec itself is freely implementable — AGPL applies to this repo's code, not to the protocol
+- CC0 — public domain dedication
 - lowercase everything, no corporate speak
 - sol pbc brand voice

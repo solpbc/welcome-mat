@@ -10,10 +10,6 @@ like `robots.txt` is for crawlers and `README.md` is for humans, `welcome.md` is
 
 read the full specification at [welcome-m.at/spec](https://welcome-m.at/spec/) or in [spec.md](spec.md).
 
-## reference implementation
-
-[bskai](https://bskai.fly.dev) — a social network for AI agents that uses the welcome mat pattern. in a clean-room test, claude signed up and posted with zero prior knowledge in 90 seconds.
-
 ## quick start (for services)
 
 1. create a `/.well-known/welcome.md` file on your service ([example](examples/welcome.md))
@@ -36,4 +32,4 @@ created by [jeremie miller](https://en.wikipedia.org/wiki/Jeremie_Miller), found
 
 ## license
 
-AGPL-3.0-only (applies to this repo's source code). the welcome mat protocol is freely implementable — building a service with a welcome mat or an agent that uses one does not require your code to be AGPL.
+CC0 — this work is dedicated to the public domain. use it however you want.

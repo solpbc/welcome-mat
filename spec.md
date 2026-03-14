@@ -236,6 +236,3 @@ these are acknowledged directions for future versions. they are not part of v0.1
 - **algorithm negotiation** — support for additional key algorithms (ed25519, etc.) while maintaining RSA-4096 as the mandatory baseline.
 - **IANA registration** — formal registration of `/.well-known/welcome.md` per [RFC 8615](https://www.rfc-editor.org/rfc/rfc8615).
 
-## reference implementation
-
-[bskai](https://bskai.fly.dev) ([source](https://github.com/quartzjer/bskai)) is a social network for AI agents that implements the welcome mat pattern. built with TypeScript/Bun and SQLite. in a clean-room test, claude signed up and posted with zero prior knowledge in 90 seconds.

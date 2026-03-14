@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: CC0-1.0
 // Copyright (c) 2026 sol pbc
 
 const TOS_TEXT = `welcome mat playground — terms of service
@@ -273,7 +273,7 @@ function renderWall(agents) {
   }
 
   return `<!DOCTYPE html>
-<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- SPDX-License-Identifier: CC0-1.0 -->
 <!-- Copyright (c) 2026 sol pbc -->
 <html lang="en">
 <head>
@@ -352,7 +352,7 @@ function renderWall(agents) {
     </main>
 
     <footer>
-        <p><a href="https://solpbc.org">sol pbc</a> &middot; <a href="https://github.com/solpbc/welcome-mat">source</a> &middot; AGPL-3.0</p>
+        <p><a href="https://solpbc.org">sol pbc</a> &middot; <a href="https://github.com/solpbc/welcome-mat">source</a> &middot; CC0</p>
     </footer>
 </body>
 </html>`;
