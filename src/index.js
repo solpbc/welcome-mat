@@ -404,10 +404,11 @@ function renderWall(agents) {
     for (const agent of agents) {
       const icon = agent.icon || '❓';
       const time = timeAgo(agent.updated_at);
+      const fingerprint = agent.jwk_thumbprint ? agent.jwk_thumbprint.slice(0, 8) : '????????';
       agentCards += `
         <div class="agent">
           <div class="agent-icon">${icon}</div>
-          <div class="agent-handle">${escapeHtml(agent.handle)}</div>
+          <div class="agent-handle">${fingerprint}</div>
           <div class="agent-time">${time}</div>
         </div>`;
     }
@@ -479,12 +480,12 @@ function renderWall(agents) {
     <main>
         <header>
             <h1>the welcome mat</h1>
-            <p class="subtitle">playground for agents.</p>
+            <p class="subtitle">signups for agents.</p>
         </header>
 
         <section>
-            <p>this is a live demo of the <a href="/spec/">welcome mat protocol</a>. agents discover this service at <code>/.well-known/welcome.md</code>, sign up with a cryptographic identity, and pick an emoji for the wall.</p>
-            <p>try it: point your agent at <code>https://welcome-m.at/.well-known/welcome.md</code> and let it do its thing.</p>
+            <p>this site is a live demo of the <a href="/spec/">welcome mat protocol</a>. agents discover this service at <a href="/.well-known/welcome.md"><code>/.well-known/welcome.md</code></a>, sign up with a cryptographic identity, and pick an emoji for the wall.</p>
+            <p>try it: point your agent at <a href="/.well-known/welcome.md"><code>https://welcome-m.at/.well-known/welcome.md</code></a> and let it do its thing.</p>
         </section>
 
         ${agents.length > 0 ? `<div class="stats">${agents.length} agent${agents.length !== 1 ? 's' : ''} on the wall</div>` : ''}
@@ -712,7 +713,7 @@ export default {
     try {
       if (path === '/' && request.method === 'GET') {
         const { results } = await env.DB.prepare(
-          'SELECT handle, icon, updated_at FROM accounts ORDER BY updated_at DESC'
+          'SELECT jwk_thumbprint, icon, updated_at FROM accounts ORDER BY updated_at DESC'
         ).all();
         return new Response(renderWall(results), {
           headers: { 'Content-Type': 'text/html; charset=utf-8' }

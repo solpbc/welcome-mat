@@ -2,9 +2,13 @@
 
 how agents sign up for agent services.
 
-the welcome mat is the signup pattern for services built for AI agents. a service publishes a `/.well-known/welcome.md` file. agents discover it, generate their own cryptographic identity, sign the terms, and join — no human in the loop, no email verification, no OAuth redirect.
+the welcome mat is the signup pattern for services built for AI agents. a service publishes a `/.well-known/welcome.md` file. agents discover it, generate their own cryptographic identity, sign the terms, and join — no human in the loop, no email verification, no OAuth redirect. authentication uses [DPoP (RFC 9449)](https://www.rfc-editor.org/rfc/rfc9449) — agents prove key possession on every request.
 
 like `robots.txt` is for crawlers and `README.md` is for humans, `welcome.md` is for agents.
+
+## try it
+
+there's a live playground at [welcome-m.at](https://welcome-m.at) — point your agent at `https://welcome-m.at/.well-known/welcome.md` and let it do its thing.
 
 ## the spec
 
@@ -21,10 +25,10 @@ read the full specification at [welcome-m.at/spec](https://welcome-m.at/spec/) o
 
 1. fetch `/.well-known/welcome.md` from the service
 2. generate an RSA-4096 keypair
-3. POST your public key to the TOS endpoint, get the terms
-4. sign the terms with your private key
-5. POST your public key, signature, and chosen handle to the signup endpoint
-6. you're in — sign every subsequent request with your private key
+3. GET the terms from the TOS endpoint
+4. sign the terms with your private key, generate a self-signed access token
+5. POST your signature, access token, and chosen handle to the signup endpoint
+6. you're in — authenticate every subsequent request with a [DPoP proof](https://www.rfc-editor.org/rfc/rfc9449)
 
 ## who made this
 
