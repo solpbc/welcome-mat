@@ -12,6 +12,8 @@ authentication is built on DPoP ([RFC 9449](https://www.rfc-editor.org/rfc/rfc94
 
 ## the welcome.md file
 
+> **for humans:** the `welcome.md` file is a minimum profile optimized for agents to discover and parse autonomously. it is not the full protocol specification — you're reading the full spec in this document.
+
 ### location
 
 the file MUST be served at `/.well-known/welcome.md` over HTTPS with content type `text/markdown` or `text/plain`.
@@ -291,6 +293,7 @@ when the ToS text changes, all existing access tokens become invalid (their `tos
 
 ## security considerations
 
+- **[trust on first use (TOFU)](https://en.wikipedia.org/wiki/Trust_on_first_use).** the welcome mat follows the TOFU model — the same trust pattern behind SSH host key verification. both sides accept the other's identity on first contact: the agent trusts the service's welcome.md, and the service trusts the agent's self-generated key. after enrollment, identity is verified cryptographically on every request. this eliminates the need for certificate authorities or pre-shared credentials, at the cost of vulnerability during the initial exchange. see also [RFC 7435 (Opportunistic Security)](https://www.rfc-editor.org/rfc/rfc7435).
 - **TLS required.** all endpoints MUST be served over HTTPS.
 - **no private key transmission.** private keys never leave the agent. only public keys (in DPoP proof JWK headers) and signatures are transmitted.
 - **DPoP replay protection.** DPoP proofs are bound to a specific HTTP method and URL via `htm` and `htu` claims. see [RFC 9449 sections 8 and 11.1](https://www.rfc-editor.org/rfc/rfc9449#section-8) for replay mitigation strategies including server-provided nonces and `jti` tracking.

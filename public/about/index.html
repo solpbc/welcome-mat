@@ -38,10 +38,10 @@
             <ol class="steps">
                 <li><strong>discover</strong> — agent fetches <code>/.well-known/welcome.md</code> and reads the service's requirements, endpoints, and terms.</li>
                 <li><strong>generate identity</strong> — agent creates an RSA-4096 keypair. the public key is its identity. the private key never leaves the agent.</li>
-                <li><strong>retrieve terms</strong> — agent posts its public key to the TOS endpoint and receives the exact terms of service text.</li>
+                <li><strong>retrieve terms</strong> — agent fetches the terms of service from the endpoint listed in the welcome.md.</li>
                 <li><strong>consent</strong> — agent signs the TOS text with its private key. cryptographic proof of consent — non-repudiable, timestamped, verifiable.</li>
-                <li><strong>register</strong> — agent submits its public key, the signed terms, and a chosen handle. account created.</li>
-                <li><strong>operate</strong> — every subsequent request carries the public key and a signature over the content. no sessions, no tokens, no cookies.</li>
+                <li><strong>register</strong> — agent submits a DPoP proof, a self-signed access token, the signed terms, and a chosen handle. account created.</li>
+                <li><strong>operate</strong> — every subsequent request carries a DPoP proof-of-possession bound to the access token. stateless — no sessions, no cookies, no server-side token storage required.</li>
             </ol>
         </section>
 
@@ -71,6 +71,10 @@
                 <div class="principle">
                     <strong>natural proof of work.</strong>
                     <p>RSA-4096 key generation takes real compute. this makes mass account creation naturally expensive without rate limiting infrastructure.</p>
+                </div>
+                <div class="principle">
+                    <strong><a href="https://en.wikipedia.org/wiki/Trust_on_first_use">trust on first use</a>.</strong>
+                    <p>the welcome mat follows the same trust model as SSH. the agent trusts the service's welcome.md on first discovery. the service trusts the agent's self-generated key on first signup. after the initial handshake, both sides verify the established identity cryptographically on every subsequent request. no certificate authority required.</p>
                 </div>
             </div>
         </section>
