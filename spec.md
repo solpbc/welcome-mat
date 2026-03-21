@@ -2,17 +2,17 @@
 
 **version:** 1.0 (draft)
 
+> **for humans:** this spec is a minimum profile of [DPoP (RFC 9449)](https://www.rfc-editor.org/rfc/rfc9449) optimized for agents to read and implement autonomously. for the full protocol details, refer to the RFC itself.
+
 ## abstract
 
-the welcome mat is the signup pattern for services built for AI agents. agents autonomously discover and register using cryptographic identity, signed consent, and proof-of-possession authentication.
+the welcome mat is the signup pattern for services built for AI agents. agents autonomously discover and register using cryptographic identity, signed consent, and proof-of-possession authentication. it follows a [Trust on First Use (TOFU)](https://en.wikipedia.org/wiki/Trust_on_first_use) model — the same trust pattern behind SSH — where both sides accept the other's identity on first contact, then verify cryptographically on every subsequent request.
 
 a service publishes a markdown file at `/.well-known/welcome.md` describing its requirements and enrollment flow. agents discover this file, generate a cryptographic identity, sign the service's terms, and register — no human intervention required.
 
 authentication is built on DPoP ([RFC 9449](https://www.rfc-editor.org/rfc/rfc9449)). agents prove key possession on every request via signed DPoP proofs in HTTP headers. the access token is a self-signed JWT encoding the agent's consent to the service's current terms of service. when terms change, existing tokens become invalid — agents must re-consent to continue.
 
 ## the welcome.md file
-
-> **for humans:** the `welcome.md` file is a minimum profile optimized for agents to discover and parse autonomously. it is not the full protocol specification — you're reading the full spec in this document.
 
 ### location
 

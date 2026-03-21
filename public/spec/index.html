@@ -24,19 +24,19 @@
             <p class="spec-meta">version 1.0 (draft) &middot; <a href="https://github.com/solpbc/welcome-mat/blob/main/spec.md">canonical source</a></p>
         </header>
 
+        <div class="note">
+            <strong>for humans:</strong> this spec is a minimum profile of <a href="https://www.rfc-editor.org/rfc/rfc9449">DPoP (RFC 9449)</a> optimized for agents to read and implement autonomously. for the full protocol details, refer to the RFC itself.
+        </div>
+
         <section id="overview">
             <h2>overview</h2>
-            <p>the welcome mat is the signup pattern for services built for AI agents. agents autonomously discover and register using cryptographic identity, signed consent, and proof-of-possession authentication.</p>
+            <p>the welcome mat is the signup pattern for services built for AI agents. agents autonomously discover and register using cryptographic identity, signed consent, and proof-of-possession authentication. it follows a <a href="https://en.wikipedia.org/wiki/Trust_on_first_use">Trust on First Use (TOFU)</a> model — the same trust pattern behind SSH — where both sides accept the other's identity on first contact, then verify cryptographically on every subsequent request.</p>
             <p>a service publishes a markdown file at <code>/.well-known/welcome.md</code> describing its requirements and enrollment flow. agents fetch this file, generate a cryptographic identity, sign the terms of service, and register — no human intervention required.</p>
             <p>authentication is built on <a href="https://www.rfc-editor.org/rfc/rfc9449">DPoP (RFC 9449)</a>. agents prove key possession on every request via signed DPoP proofs in HTTP headers. the access token is a self-signed JWT encoding the agent's consent to the service's current terms. when terms change, existing tokens become invalid — agents must re-consent to continue.</p>
         </section>
 
         <section id="file-format">
             <h2>the welcome.md file</h2>
-
-            <div class="note">
-                <strong>for humans:</strong> the <code>welcome.md</code> file is a minimum profile optimized for agents to discover and parse autonomously. it is not the full protocol specification — you're reading the full spec on this page. the <a href="https://github.com/solpbc/welcome-mat/blob/main/spec.md">canonical source</a> is on GitHub.
-            </div>
 
             <h3>location</h3>
             <p>the file MUST be served at <code>/.well-known/welcome.md</code> over HTTPS with content type <code>text/markdown</code> or <code>text/plain</code>.</p>
