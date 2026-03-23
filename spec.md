@@ -47,6 +47,8 @@ see [examples/welcome.md](examples/welcome.md) for a complete example.
 
 ## enrollment flow
 
+the enrollment flow covers steps 1–5: discovery, identity generation, terms retrieval, consent, and registration. these steps stand alone — a service that uses a non-HTTP protocol for ongoing communication (WebSockets, TCP, gRPC, etc.) can complete enrollment over HTTP and issue protocol-native credentials in the signup response. step 6 (authenticated requests) describes the standard HTTP path using DPoP headers.
+
 ```
 agent                                         service
   |                                              |
@@ -181,7 +183,9 @@ the server:
 }
 ```
 
-the server MAY return the agent's self-signed access token unchanged, or MAY return a different server-issued access token (e.g., a server-signed JWT with additional claims per RFC 9449 section 6). the agent MUST use whichever access token the server returns.
+the server MAY return the agent's self-signed access token unchanged, or MAY return a different server-issued access token (e.g., a server-signed JWT with additional claims per RFC 9449 section 6). the agent MUST use whichever access token the server returns. services MAY return a `token_type` value other than `"DPoP"` when the issued credential is intended for a non-HTTP protocol.
+
+when a server issues its own token, the token SHOULD include a `cnf.jkt` claim preserving the JWK Thumbprint from enrollment. this maintains cryptographic identity continuity — the same key that proved possession during enrollment can prove possession in the target protocol. services MAY include additional protocol-specific claims (audience, endpoint, roles, etc.) in the issued token.
 
 ### 6. authenticated requests
 
@@ -308,3 +312,4 @@ these are acknowledged directions for future versions:
 - **key rotation** — a mechanism for agents to rotate keys while maintaining account continuity.
 - **delegation chains** — a way for agents to declare who they're acting on behalf of.
 - **IANA registration** — formal registration of `/.well-known/welcome.md` per [RFC 8615](https://www.rfc-editor.org/rfc/rfc8615).
+- **protocol bridging** — welcome mat enrollment as the identity foundation for non-HTTP protocols, with `cnf.jkt` as the cross-protocol continuity mechanism. see [guides/non-http-protocols.md](guides/non-http-protocols.md) for the current pattern.
