@@ -18,6 +18,10 @@ read the full specification at [welcome-m.at/spec](https://welcome-m.at/spec/) o
 
 - [non-HTTP protocols](guides/non-http-protocols.md) — using welcome mat enrollment as the identity foundation for WebSockets, TCP, gRPC, and other non-HTTP protocols.
 
+## adoptions
+
+- **[Sky Valley big-d](https://github.com/sky-valley/big-d)** — welcome mat enrollment for the [Intent Transmission Protocol](https://skyvalley.ac) (ITP), a real-time agent coordination protocol over TCP sockets. first non-HTTP adoption of the spec.
+
 ## quick start (for services)
 
 1. create a `/.well-known/welcome.md` file on your service ([example](examples/welcome.md))

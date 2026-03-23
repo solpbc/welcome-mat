@@ -76,7 +76,7 @@ the enrollment surface (HTTP) and the participation surface (target protocol) ca
 
 ## reference implementations
 
-*none yet — this section will be updated as implementations are published.*
+- **[Sky Valley big-d](https://github.com/sky-valley/big-d)** — [Sky Valley Ambient Computing](https://skyvalley.ac) adopted welcome mat as the canonical enrollment layer for the Intent Transmission Protocol (ITP), a Promise Theory-based wire protocol for real-time agent coordination over TCP sockets. welcome mat handles discovery and signup over HTTP; a server-issued station token (bound via `cnf.jkt`) bridges into ITP's native auth with per-message proofs.
 
 ## related
 
