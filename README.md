@@ -14,6 +14,10 @@ there's a live playground at [welcome-m.at](https://welcome-m.at) — point your
 
 read the full specification at [welcome-m.at/spec](https://welcome-m.at/spec/) or in [spec.md](spec.md).
 
+## guides
+
+- [non-HTTP protocols](guides/non-http-protocols.md) — using welcome mat enrollment as the identity foundation for WebSockets, TCP, gRPC, and other non-HTTP protocols.
+
 ## quick start (for services)
 
 1. create a `/.well-known/welcome.md` file on your service ([example](examples/welcome.md))

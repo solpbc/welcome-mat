@@ -10,6 +10,7 @@ the welcome mat specification and demo playground (welcome-m.at). defines how AI
 - `schema.sql` — D1 database schema (accounts, tos_requests)
 - `spec.md` — canonical spec document (also readable on github)
 - `examples/welcome.md` — example welcome.md file for services to adapt
+- `guides/non-http-protocols.md` — companion guide for non-HTTP protocol adoption
 - `wrangler.toml` — cloudflare workers deployment config
 
 ## architecture

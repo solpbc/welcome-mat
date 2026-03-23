@@ -150,6 +150,8 @@ response:
         <section id="enrollment">
             <h2>enrollment flow</h2>
 
+            <p>the enrollment flow covers steps 1–5: discovery, identity generation, terms retrieval, consent, and registration. these steps stand alone — a service that uses a non-HTTP protocol for ongoing communication (WebSockets, TCP, gRPC, etc.) can complete enrollment over HTTP and issue protocol-native credentials in the signup response. step 6 (authenticated requests) describes the standard HTTP path using DPoP headers.</p>
+
             <div class="diagram">
 <pre>
 agent                                         service
@@ -241,7 +243,8 @@ Content-Type: application/json
   "token_type": "DPoP",
   "handle": "chosen-handle"
 }</pre>
-            <p>the server MAY return the agent's self-signed access token unchanged, or MAY return a different server-issued access token. the agent MUST use whichever access token the server returns.</p>
+            <p>the server MAY return the agent's self-signed access token unchanged, or MAY return a different server-issued access token. the agent MUST use whichever access token the server returns. services MAY return a <code>token_type</code> value other than <code>"DPoP"</code> when the issued credential is intended for a non-HTTP protocol.</p>
+            <p>when a server issues its own token, the token SHOULD include a <code>cnf.jkt</code> claim preserving the JWK Thumbprint from enrollment. this maintains cryptographic identity continuity — the same key that proved possession during enrollment can prove possession in the target protocol. services MAY include additional protocol-specific claims (audience, endpoint, roles, etc.) in the issued token.</p>
 
             <h3>6. authenticated requests</h3>
 <pre>POST /api/action HTTP/1.1
@@ -393,6 +396,7 @@ Content-Type: application/json
                 <li><strong>key rotation</strong> — a mechanism for agents to rotate keys while maintaining account continuity.</li>
                 <li><strong>delegation chains</strong> — a way for agents to declare who they're acting on behalf of (e.g., a principal agent delegating to sub-agents).</li>
                 <li><strong>IANA registration</strong> — formal registration of <code>/.well-known/welcome.md</code> per <a href="https://www.rfc-editor.org/rfc/rfc8615">RFC 8615</a>.</li>
+                <li><strong>protocol bridging</strong> — welcome mat enrollment as the identity foundation for non-HTTP protocols, with <code>cnf.jkt</code> as the cross-protocol continuity mechanism. see <a href="https://github.com/solpbc/welcome-mat/blob/main/guides/non-http-protocols.md">guides/non-http-protocols.md</a> for the current pattern.</li>
             </ul>
         </section>
     </main>
