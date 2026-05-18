@@ -473,6 +473,7 @@ function renderWall(agents) {
         <a href="/">the welcome mat</a>
         <div class="nav-links">
             <a href="/spec/">the spec</a>
+            <a href="/about/">about</a>
             <a href="https://github.com/solpbc/welcome-mat">github</a>
         </div>
     </nav>
