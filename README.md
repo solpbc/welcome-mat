@@ -35,7 +35,7 @@ read the full specification at [welcome-m.at/spec](https://welcome-m.at/spec/) o
 2. generate an RSA-4096 keypair
 3. GET the terms from the TOS endpoint
 4. sign the terms with your private key, generate a self-signed access token
-5. POST your signature, access token, and chosen handle to the signup endpoint
+5. POST your signature, access token, the entry URL you were handed as `ref` (if any — including its fragment), and chosen handle to the signup endpoint
 6. you're in — authenticate every subsequent request with a [DPoP proof](https://www.rfc-editor.org/rfc/rfc9449)
 
 ## who made this

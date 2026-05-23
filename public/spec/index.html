@@ -6,7 +6,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>the welcome mat — spec</title>
-    <meta name="description" content="the welcome mat specification v1.0. the signup pattern for agent services — DPoP proof-of-possession and /.well-known/welcome.md.">
+    <meta name="description" content="the welcome mat specification v1.1. the signup pattern for agent services — DPoP proof-of-possession and /.well-known/welcome.md.">
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -22,7 +22,7 @@
     <main>
         <header>
             <h1>the spec</h1>
-            <p class="spec-meta">version 1.0 (draft) &middot; <a href="https://github.com/solpbc/welcome-mat/blob/main/spec.md">canonical source</a></p>
+            <p class="spec-meta">version 1.1 (draft) &middot; <a href="https://github.com/solpbc/welcome-mat/blob/main/spec.md">canonical source</a></p>
         </header>
 
         <div class="note">
@@ -76,6 +76,10 @@
                 <tr>
                     <td>signup requirements</td>
                     <td>service-specific fields required during registration (handle, subject, etc.).</td>
+                </tr>
+                <tr>
+                    <td>ref policy</td>
+                    <td>declares whether <code>ref</code> is accepted, ignored, or required; describes any service-specific semantics for the URL's fragment, query, or path.</td>
                 </tr>
                 <tr>
                     <td>rate limits</td>
@@ -174,7 +178,7 @@ agent                                         service
   |                                              |
   |  POST /signup                                |
   |  DPoP: &lt;proof, no ath&gt;                       |
-  |  Body: { tos_signature, access_token,        |
+  |  Body: { tos_signature, access_token, ref?,  |
   |          ...service-specific fields }         |
   |---------------------------------------------&gt;|
   |  { access_token, token_type: "DPoP",         |
@@ -235,9 +239,10 @@ Content-Type: application/json
 {
   "tos_signature": "base64url-encoded-signature-of-tos-text",
   "access_token": "eyJ0eXAiOiJ3bStqd3QiLC...",
-  "handle": "chosen-handle"
+  "handle": "chosen-handle",
+  "ref": "https://example.com/#inv_01HX7T9Z8K3MQR2"
 }</pre>
-            <p>the agent sends a DPoP proof, the ToS signature, the self-signed access token, and any service-specific fields to the signup endpoint.</p>
+            <p>the agent sends a DPoP proof, the ToS signature, the self-signed access token, an optional <code>ref</code> field (the verbatim entry URL the agent was handed — see <a href="#registration-reference">registration reference</a> below), and any service-specific fields to the signup endpoint.</p>
             <p>the server validates the DPoP proof, verifies the ToS signature against the current ToS text, validates the access token (signature, <code>tos_hash</code>, <code>aud</code>, <code>cnf.jkt</code>), and creates the account. the server returns the approved access token:</p>
 <pre>{
   "access_token": "eyJ0eXAiOiJ3bStqd3QiLC...",
@@ -257,6 +262,54 @@ Content-Type: application/json
 {"business": "data"}</pre>
             <p>after enrollment, API requests use standard DPoP authentication. the access token goes in the <code>Authorization</code> header. the DPoP proof includes an <code>ath</code> claim — the base64url-encoded SHA-256 hash of the access token string — binding each proof to the specific access token per <a href="https://www.rfc-editor.org/rfc/rfc9449#section-4.2">RFC 9449 section 4.2</a>.</p>
             <p>request bodies contain only business data. authentication is entirely in HTTP headers.</p>
+        </section>
+
+        <section id="registration-reference">
+            <h2>registration reference</h2>
+
+            <p>agents are typically given an entry URL out-of-band — "sign up here: <code>&lt;url&gt;</code>" — that points at the service. that URL MAY carry per-agent context the service wants to see at enrollment: an invite code, a referral attribution, a role grant, an account-linking token, a campaign tag. the welcome.md file is static and cacheable, so it cannot carry per-agent context; the entry URL can.</p>
+
+            <p>the <code>ref</code> field on the signup body carries the full entry URL the agent was handed, verbatim, including any fragment.</p>
+
+            <h3>agent behavior</h3>
+            <p>if the agent was given an entry URL for registration, it SHOULD include that URL verbatim as <code>ref</code> in the signup body:</p>
+<pre>{
+  "tos_signature": "base64url-encoded-signature-of-tos-text",
+  "access_token": "eyJ0eXAiOiJ3bStqd3QiLC...",
+  "ref": "https://example.com/?campaign=launch#inv_01HX7T9Z8K3MQR2"
+}</pre>
+            <p>the URL MUST be included exactly as the agent received it. fragments — which HTTP clients normally strip before sending a request — MUST be preserved. agents that did not arrive via a specific entry URL (hardcoded discovery, public listing, broadcast) MAY omit <code>ref</code>.</p>
+
+            <h3>service behavior</h3>
+            <p>the service MAY parse <code>ref</code> and use any part — origin, path, query, fragment — to link the enrolling agent with prior context. services SHOULD NOT require <code>ref</code> unless they explicitly advertise a referral-gated or invite-gated policy in their welcome.md.</p>
+            <p>the welcome.md MAY declare known <code>ref</code> semantics in a <code>signup requirements</code> or <code>usage policies</code> section — for example, "the fragment of <code>ref</code> MUST be an invite token issued by this service."</p>
+
+            <h3>why a URL, not an opaque token</h3>
+            <p>the full URL preserves every linking signal the service might want and lets each service interpret whichever parts it cares about:</p>
+            <ul>
+                <li><strong>fragment</strong> — the privacy-preserving carrier for per-agent secrets (invite codes, referral keys).</li>
+                <li><strong>query</strong> — non-secret context (campaign, source, version).</li>
+                <li><strong>path</strong> — landing surface (which invite page, which team, which deployment).</li>
+                <li><strong>origin</strong> — which welcome.md the agent was directed at, when a service runs more than one.</li>
+            </ul>
+            <p>services that only care about the fragment can extract it; services that want the full picture have it.</p>
+
+            <h3>privacy and log surface</h3>
+            <p>the discovery fetch is always <code>GET /.well-known/welcome.md</code> against the service origin — no part of the entry URL beyond the origin appears in the discovery request, regardless of which path, query, or fragment the entry URL carried. fragments specifically are stripped by HTTP clients before any request leaves the agent (<a href="https://www.rfc-editor.org/rfc/rfc3986#section-3.5">RFC 3986 section 3.5</a>). all of that information reaches the service only at signup, when the agent presents <code>ref</code>.</p>
+            <p>this separates two phases cleanly:</p>
+            <ul>
+                <li><strong>discovery</strong> — public, cacheable, no per-agent context in server logs, CDN logs, or <code>Referer</code> headers.</li>
+                <li><strong>enrollment</strong> — the agent consciously presents <code>ref</code> alongside ToS consent.</li>
+            </ul>
+
+            <h3>bearer semantics</h3>
+            <p><code>ref</code> is a bearer reference — whoever holds the entry URL can present it. single-use enforcement, expiration, allowlists, and rate-limiting are the <strong>service's</strong> responsibility, not the protocol's. services that issue invite URLs SHOULD treat them with the same care as any bearer token.</p>
+
+            <h3>integrity</h3>
+            <p>the DPoP proof does not sign the request body, so <code>ref</code> is not cryptographically bound to the agent's key at the protocol layer. TLS covers transit. services that need tamper-evident binding MAY echo a derived value into a server-issued access token claim per <a href="https://www.rfc-editor.org/rfc/rfc9449#section-6">RFC 9449 section 6</a>.</p>
+
+            <h3>re-consent</h3>
+            <p>on a ToS-change re-consent (see <a href="#tos-gated">ToS-gated validity</a>), the account already exists and <code>ref</code> applies only to initial enrollment. agents SHOULD omit <code>ref</code> on re-consent; services SHOULD ignore it if present.</p>
         </section>
 
         <section id="access-token">
@@ -337,7 +390,7 @@ Content-Type: application/json
             <ol>
                 <li><strong>a <code>/.well-known/welcome.md</code> file</strong> — the discovery endpoint, declaring supported DPoP algorithms, minimum key sizes, endpoints, and signup requirements.</li>
                 <li><strong>a terms document</strong> — any URL serving the ToS text, referenced from the welcome.md. a plain <code>GET</code> endpoint; no authentication required.</li>
-                <li><strong>a signup endpoint</strong> — validates the DPoP proof, verifies the ToS signature, validates the proposed access token, returns the approved access token.</li>
+                <li><strong>a signup endpoint</strong> — validates the DPoP proof, verifies the ToS signature, validates the proposed access token, optionally processes the <code>ref</code> field (the verbatim entry URL the agent was handed — see <a href="#registration-reference">registration reference</a>), and returns the approved access token.</li>
             </ol>
 
             <h3>DPoP proof validation</h3>
@@ -367,7 +420,7 @@ Content-Type: application/json
                 <li><code>GET</code> the terms URL from the welcome.md — read the ToS text</li>
                 <li>sign the ToS text with your private key (UTF-8 bytes, same JWA algorithm as your DPoP proofs)</li>
                 <li>generate a self-signed access token JWT: <code>typ</code> = <code>wm+jwt</code>, <code>tos_hash</code> = base64url(SHA-256(ToS text)), <code>aud</code> = service origin, <code>cnf.jkt</code> = your JWK Thumbprint, plus <code>jti</code> and <code>iat</code></li>
-                <li><code>POST</code> to the signup endpoint with DPoP proof, <code>tos_signature</code>, <code>access_token</code>, and any service-specific fields from the welcome.md</li>
+                <li><code>POST</code> to the signup endpoint with DPoP proof, <code>tos_signature</code>, <code>access_token</code>, <code>ref</code> (your verbatim entry URL, if any — see <a href="#registration-reference">registration reference</a>), and any service-specific fields from the welcome.md</li>
                 <li>store the returned <code>access_token</code> — use it in the <code>Authorization: DPoP &lt;token&gt;</code> header on all subsequent requests</li>
                 <li>on 401 with <code>"error": "tos_changed"</code>, re-consent by repeating steps 3–7</li>
             </ol>
@@ -387,12 +440,13 @@ Content-Type: application/json
                 <li><strong>DPoP replay protection.</strong> DPoP proofs are bound to a specific HTTP method and URL. see <a href="https://www.rfc-editor.org/rfc/rfc9449">RFC 9449</a> for replay mitigation strategies including <code>jti</code> tracking and server-provided nonces.</li>
                 <li><strong>self-signed access tokens.</strong> self-signed tokens allow agents to mint new tokens without going through the signup flow. this is a property of the self-signed model — the access token is a capability assertion verified by DPoP proof-of-possession, not a server-issued credential. services requiring enforceable re-consent or individual token revocation SHOULD issue server-signed tokens.</li>
                 <li><strong>key reuse and correlation.</strong> agents that reuse keys across services can be correlated via JWK Thumbprint. agents needing unlinkability should use unique keys per service.</li>
+                <li><strong><code>ref</code> is a bearer reference.</strong> the entry URL is held by whoever was given it; single-use, expiration, and allowlist enforcement are service responsibilities. <code>ref</code> is not signed by the DPoP proof; services needing tamper-evidence MAY bind a derived value into a server-issued access token claim.</li>
             </ul>
         </section>
 
         <section id="future">
             <h2>future extensions</h2>
-            <p>these are acknowledged directions for future versions of the spec. they are not part of v1.0.</p>
+            <p>these are acknowledged directions for future versions of the spec.</p>
             <ul>
                 <li><strong>key rotation</strong> — a mechanism for agents to rotate keys while maintaining account continuity.</li>
                 <li><strong>delegation chains</strong> — a way for agents to declare who they're acting on behalf of (e.g., a principal agent delegating to sub-agents).</li>

@@ -1,6 +1,6 @@
 # the welcome mat specification
 
-**version:** 1.0 (draft)
+**version:** 1.1 (draft)
 
 > **for humans:** this spec is a minimum profile of [DPoP (RFC 9449)](https://www.rfc-editor.org/rfc/rfc9449) optimized for agents to read and implement autonomously. for the full protocol details, refer to the RFC itself.
 
@@ -37,6 +37,7 @@ plain markdown with required and optional sections. the file is both human-reada
 | section | description |
 |---------|-------------|
 | signup requirements | service-specific fields required during registration (handle, subject, etc.). |
+| ref policy | declares whether `ref` is accepted, ignored, or required; describes any service-specific semantics for the URL's fragment, query, or path. |
 | rate limits | request rate limits, cooldown periods, or throttling policies. |
 | pricing | cost information, free tier limits, or payment requirements. |
 | usage policies | acceptable use, content policies, or behavioral expectations. |
@@ -69,7 +70,7 @@ agent                                         service
   |                                              |
   |  POST /signup                                |
   |  DPoP: <proof>                               |
-  |  Body: { tos_signature, access_token,        |
+  |  Body: { tos_signature, access_token, ref?,  |
   |          ...service-specific fields }         |
   |--------------------------------------------->|
   |  { access_token, token_type: "DPoP",         |
@@ -146,9 +147,12 @@ the agent sends `POST /signup` (or the service's configured signup endpoint) wit
 ```json
 {
   "tos_signature": "base64url-encoded-signature-of-tos-text",
-  "access_token": "eyJ0eXAiOiJ3bStqd3QiLC..."
+  "access_token": "eyJ0eXAiOiJ3bStqd3QiLC...",
+  "ref": "https://example.com/#inv_01HX7T9Z8K3MQR2"
 }
 ```
+
+the body MAY also include `ref` — the full entry URL the agent was handed for registration, verbatim, including any fragment. see "registration reference" below.
 
 the DPoP proof on this request has no `ath` claim. the access token in the body is a *proposed* credential, not an authentication credential — the DPoP proof alone authenticates this request via key possession. the `ath` binding begins on the first authenticated request after enrollment.
 
@@ -205,6 +209,64 @@ the DPoP proof includes the `ath` claim — the base64url-encoded SHA-256 hash o
 
 request bodies contain only business data. authentication is entirely in HTTP headers.
 
+## registration reference
+
+agents are typically given an entry URL out-of-band — "sign up here: `<url>`" — that points at the service. that URL MAY carry per-agent context the service wants to see at enrollment: an invite code, a referral attribution, a role grant, an account-linking token, a campaign tag. the welcome.md file is static and cacheable, so it cannot carry per-agent context; the entry URL can.
+
+the `ref` field on the signup body carries the full entry URL the agent was handed, verbatim, including any fragment.
+
+### agent behavior
+
+if the agent was given an entry URL for registration, it SHOULD include that URL verbatim as `ref` in the signup body:
+
+```json
+{
+  "tos_signature": "base64url-encoded-signature-of-tos-text",
+  "access_token": "eyJ0eXAiOiJ3bStqd3QiLC...",
+  "ref": "https://example.com/?campaign=launch#inv_01HX7T9Z8K3MQR2"
+}
+```
+
+the URL MUST be included exactly as the agent received it. fragments — which HTTP clients normally strip before sending a request — MUST be preserved. agents that did not arrive via a specific entry URL (hardcoded discovery, public listing, broadcast) MAY omit `ref`.
+
+### service behavior
+
+the service MAY parse `ref` and use any part — origin, path, query, fragment — to link the enrolling agent with prior context. services SHOULD NOT require `ref` unless they explicitly advertise a referral-gated or invite-gated policy in their welcome.md.
+
+the welcome.md MAY declare known `ref` semantics in a `signup requirements` or `usage policies` section — for example, "the fragment of `ref` MUST be an invite token issued by this service."
+
+### why a URL, not an opaque token
+
+the full URL preserves every linking signal the service might want and lets each service interpret whichever parts it cares about:
+
+- **fragment** — the privacy-preserving carrier for per-agent secrets (invite codes, referral keys).
+- **query** — non-secret context (campaign, source, version).
+- **path** — landing surface (which invite page, which team, which deployment).
+- **origin** — which welcome.md the agent was directed at, when a service runs more than one.
+
+services that only care about the fragment can extract it; services that want the full picture have it.
+
+### privacy and log surface
+
+the discovery fetch is always `GET /.well-known/welcome.md` against the service origin — no part of the entry URL beyond the origin appears in the discovery request, regardless of which path, query, or fragment the entry URL carried. fragments specifically are stripped by HTTP clients before any request leaves the agent ([RFC 3986 section 3.5](https://www.rfc-editor.org/rfc/rfc3986#section-3.5)). all of that information reaches the service only at signup, when the agent presents `ref`.
+
+this separates two phases cleanly:
+
+- **discovery** — public, cacheable, no per-agent context in server logs, CDN logs, or `Referer` headers.
+- **enrollment** — the agent consciously presents `ref` alongside ToS consent.
+
+### bearer semantics
+
+`ref` is a bearer reference — whoever holds the entry URL can present it. single-use enforcement, expiration, allowlists, and rate-limiting are the **service's** responsibility, not the protocol's. services that issue invite URLs SHOULD treat them with the same care as any bearer token.
+
+### integrity
+
+the DPoP proof does not sign the request body, so `ref` is not cryptographically bound to the agent's key at the protocol layer. TLS covers transit. services that need tamper-evident binding MAY echo a derived value into a server-issued access token claim per [RFC 9449 section 6](https://www.rfc-editor.org/rfc/rfc9449#section-6).
+
+### re-consent
+
+on a ToS-change re-consent (see "ToS-gated validity"), the account already exists and `ref` applies only to initial enrollment. agents SHOULD omit `ref` on re-consent; services SHOULD ignore it if present.
+
 ## access token
 
 ### self-signed (stateless)
@@ -254,7 +316,7 @@ a minimum welcome mat implementation requires:
 
 1. **a `/.well-known/welcome.md` file** — the discovery endpoint, declaring supported algorithms, endpoints, and signup requirements
 2. **a terms document** — any URL serving the ToS text, referenced from the welcome.md. a plain `GET` endpoint; no authentication required
-3. **a signup endpoint** (e.g., `POST /signup`) — validates the DPoP proof, verifies the ToS signature, validates the proposed access token, returns the approved access token
+3. **a signup endpoint** (e.g., `POST /signup`) — validates the DPoP proof, verifies the ToS signature, validates the proposed access token, optionally processes the `ref` field (the verbatim entry URL the agent was handed — see "registration reference"), and returns the approved access token
 
 #### DPoP proof validation
 
@@ -289,7 +351,7 @@ when the ToS text changes, all existing access tokens become invalid (their `tos
 3. `GET` the terms URL from the welcome.md — read the ToS text
 4. sign the ToS text with your private key (UTF-8 bytes, same JWA algorithm as your DPoP proofs)
 5. generate a self-signed access token JWT: `typ` = `wm+jwt`, `tos_hash` = base64url(SHA-256(ToS text)), `aud` = service origin, `cnf.jkt` = your JWK Thumbprint, plus `jti` and `iat`
-6. `POST` to the signup endpoint with DPoP proof, `tos_signature`, `access_token`, and any service-specific fields from the welcome.md
+6. `POST` to the signup endpoint with DPoP proof, `tos_signature`, `access_token`, `ref` (your verbatim entry URL, if any — see "registration reference"), and any service-specific fields from the welcome.md
 7. store the returned `access_token` — use it in the `Authorization: DPoP <token>` header on all subsequent requests
 8. on 401 with `"error": "tos_changed"`, re-consent by repeating steps 3–7
 
@@ -303,6 +365,7 @@ when the ToS text changes, all existing access tokens become invalid (their `tos
 - **DPoP replay protection.** DPoP proofs are bound to a specific HTTP method and URL via `htm` and `htu` claims. see [RFC 9449 sections 8 and 11.1](https://www.rfc-editor.org/rfc/rfc9449#section-8) for replay mitigation strategies including server-provided nonces and `jti` tracking.
 - **self-signed access tokens.** self-signed tokens allow agents to mint new tokens without going through the signup flow. this is a property of the self-signed model — the access token is a capability assertion verified by DPoP proof-of-possession, not a server-issued credential. services requiring enforceable re-consent or individual token revocation SHOULD issue server-signed tokens.
 - **key reuse and correlation.** agents that reuse keys across services can be correlated via JWK Thumbprint. agents needing unlinkability should use unique keys per service.
+- **`ref` is a bearer reference.** the entry URL is held by whoever was given it; single-use, expiration, and allowlist enforcement are service responsibilities. `ref` is not signed by the DPoP proof; services needing tamper-evidence MAY bind a derived value into a server-issued access token claim.
 - **no key rotation in v1.** there is no key rotation mechanism. if a private key is compromised, all accounts using that key are compromised with no recovery path. agents using portable identity across many services should weigh this risk.
 
 ## future extensions
