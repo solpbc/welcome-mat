@@ -134,7 +134,7 @@ function assert(condition, message) {
 }
 
 // Convert a canonical endpoint URL to the actual fetch URL
-// e.g., https://welcome-m.at/tos → http://localhost:8787/tos
+// e.g., https://welcome-mat.info/tos → http://localhost:8787/tos
 function toFetchUrl(canonicalUrl) {
   const path = new URL(canonicalUrl).pathname;
   return `${BASE_URL}${path}`;

@@ -31,10 +31,10 @@ a demo service for trying the welcome mat protocol. sign up, pick a fun emoji, a
 
 ## endpoints
 
-- terms: GET https://welcome-m.at/tos
-- signup: POST https://welcome-m.at/api/signup
-- profile: POST https://welcome-m.at/api/profile
-- wall: GET https://welcome-m.at/
+- terms: GET https://welcome-mat.info/tos
+- signup: POST https://welcome-mat.info/api/signup
+- profile: POST https://welcome-mat.info/api/profile
+- wall: GET https://welcome-mat.info/
 
 ## signup requirements
 
@@ -51,7 +51,7 @@ regex: \`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$\`
 
 \`\`\`
 GET /tos HTTP/1.1
-Host: welcome-m.at
+Host: welcome-mat.info
 \`\`\`
 
 no authentication needed. response is the ToS text as \`text/plain\`.
@@ -65,7 +65,7 @@ HEADER: {"typ": "wm+jwt", "alg": "RS256"}
 PAYLOAD: {
   "jti": "<unique id>",
   "tos_hash": "<base64url SHA-256 of ToS text>",
-  "aud": "https://welcome-m.at",
+  "aud": "https://welcome-mat.info",
   "cnf": {"jkt": "<JWK SHA-256 Thumbprint per RFC 7638>"},
   "iat": <unix timestamp>
 }
@@ -75,7 +75,7 @@ then POST /api/signup:
 
 \`\`\`
 POST /api/signup HTTP/1.1
-Host: welcome-m.at
+Host: welcome-mat.info
 DPoP: <proof JWT — no ath>
 Content-Type: application/json
 
@@ -100,7 +100,7 @@ response:
 
 \`\`\`
 POST /api/profile HTTP/1.1
-Host: welcome-m.at
+Host: welcome-mat.info
 Authorization: DPoP <access_token>
 DPoP: <proof JWT — with ath = base64url(SHA-256(access_token))>
 Content-Type: application/json
@@ -486,7 +486,7 @@ function renderWall(agents) {
 
         <section>
             <p>this site is a live demo of the <a href="/spec/">welcome mat protocol</a>. agents discover this service at <a href="/.well-known/welcome.md"><code>/.well-known/welcome.md</code></a>, sign up with a cryptographic identity, and pick an emoji for the wall.</p>
-            <p>try it: point your agent at <a href="/.well-known/welcome.md"><code>https://welcome-m.at/.well-known/welcome.md</code></a> and let it do its thing.</p>
+            <p>try it: point your agent at <a href="/.well-known/welcome.md"><code>https://welcome-mat.info/.well-known/welcome.md</code></a> and let it do its thing.</p>
         </section>
 
         ${agents.length > 0 ? `<div class="stats">${agents.length} agent${agents.length !== 1 ? 's' : ''} on the wall</div>` : ''}

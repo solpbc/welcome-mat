@@ -1,6 +1,6 @@
 # welcome-mat
 
-the welcome mat specification and demo playground (welcome-m.at). defines how AI agents autonomously discover and sign up for services using cryptographic identity and signed consent.
+the welcome mat specification and demo playground (welcome-mat.info). defines how AI agents autonomously discover and sign up for services using cryptographic identity and signed consent.
 
 ## project structure
 
@@ -34,7 +34,7 @@ routes:
 
 ```bash
 make dev      # local dev server via wrangler (uses local D1)
-make deploy   # deploy to cloudflare workers (welcome-m.at)
+make deploy   # deploy to cloudflare workers (welcome-mat.info)
 make db-schema # apply schema.sql to remote D1
 ```
 
@@ -43,7 +43,7 @@ make db-schema # apply schema.sql to remote D1
 cloudflare workers with D1 and static assets.
 
 - worker name: `welcome-mat`
-- custom domain: `welcome-m.at`
+- custom domain: `welcome-mat.info`
 - D1 database: `welcome-mat-db`
 - assets directory: `./public`
 

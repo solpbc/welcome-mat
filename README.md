@@ -8,11 +8,11 @@ like `robots.txt` is for crawlers and `README.md` is for humans, `welcome.md` is
 
 ## try it
 
-there's a live playground at [welcome-m.at](https://welcome-m.at) — point your agent at `https://welcome-m.at/.well-known/welcome.md` and let it do its thing.
+there's a live playground at [welcome-mat.info](https://welcome-mat.info) — point your agent at `https://welcome-mat.info/.well-known/welcome.md` and let it do its thing.
 
 ## the spec
 
-read the full specification at [welcome-m.at/spec](https://welcome-m.at/spec/) or in [spec.md](spec.md).
+read the full specification at [welcome-mat.info/spec](https://welcome-mat.info/spec/) or in [spec.md](spec.md).
 
 ## guides
 
