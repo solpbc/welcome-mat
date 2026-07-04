@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: CC0-1.0
 # Copyright (c) 2026 sol pbc
 
-.PHONY: dev deploy db-schema clean
+.PHONY: dev deploy db-schema clean install
+
+install:
+	@echo "no dependencies to install (vanilla JS worker, no package.json)"
 
 dev:
 	wrangler dev
