@@ -1,6 +1,6 @@
 # the welcome mat specification
 
-**version:** 1.1 (draft)
+**version:** 1.1
 
 > **for humans:** this spec is a minimum profile of [DPoP (RFC 9449)](https://www.rfc-editor.org/rfc/rfc9449) optimized for agents to read and implement autonomously. for the full protocol details, refer to the RFC itself.
 
