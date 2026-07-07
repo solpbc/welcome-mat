@@ -368,6 +368,12 @@ when the ToS text changes, all existing access tokens become invalid (their `tos
 - **`ref` is a bearer reference.** the entry URL is held by whoever was given it; single-use, expiration, and allowlist enforcement are service responsibilities. `ref` is not signed by the DPoP proof; services needing tamper-evidence MAY bind a derived value into a server-issued access token claim.
 - **no key rotation in v1.** there is no key rotation mechanism. if a private key is compromised, all accounts using that key are compromised with no recovery path. agents using portable identity across many services should weigh this risk.
 
+## extensions
+
+published extensions building on this specification:
+
+- **[agent authorization](extensions/agent-authorization.md)** (draft) — how a welcome mat service becomes an OAuth authorization server for its enrolled agents: a JSON consent preview replaces the consent screen, and the agent's authenticated fetch of the authorize URL is the login and the consent. written against the atproto OAuth profile.
+
 ## future extensions
 
 these are acknowledged directions for future versions:
