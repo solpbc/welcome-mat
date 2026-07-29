@@ -1,6 +1,6 @@
 # agent authorization
 
-**status:** draft
+**status:** published
 **extends:** [the welcome mat specification](../spec.md), version 1.1
 
 > **for humans:** this extension defines how a welcome mat service becomes an OAuth authorization server for its enrolled agents — a JSON preview replaces the consent screen, and the agent's authenticated fetch of the authorize URL replaces the login form and the consent click. it is written against the [atproto OAuth profile](https://atproto.com/specs/oauth) and composes with any OAuth 2.1 deployment that mandates [pushed authorization requests (RFC 9126)](https://www.rfc-editor.org/rfc/rfc9126).

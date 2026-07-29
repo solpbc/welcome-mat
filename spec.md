@@ -372,7 +372,7 @@ when the ToS text changes, all existing access tokens become invalid (their `tos
 
 published extensions building on this specification:
 
-- **[agent authorization](extensions/agent-authorization.md)** (draft) — how a welcome mat service becomes an OAuth authorization server for its enrolled agents: a JSON consent preview replaces the consent screen, and the agent's authenticated fetch of the authorize URL is the login and the consent. written against the atproto OAuth profile.
+- **[agent authorization](extensions/agent-authorization.md)** — how a welcome mat service becomes an OAuth authorization server for its enrolled agents: a JSON consent preview replaces the consent screen, and the agent's authenticated fetch of the authorize URL is the login and the consent. written against the atproto OAuth profile.
 
 ## future extensions
 
