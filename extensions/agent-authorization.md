@@ -121,7 +121,7 @@ the agent MAY deliver this callback URL to the client so it fails fast instead o
 
 when the host profile is atproto OAuth: mandatory PAR, PKCE, and DPoP; `client_id` is a URL to a client metadata document the server fetches and validates; discovery is two-hop (`/.well-known/oauth-protected-resource` → authorization server metadata); the token response's `sub` is the account's DID, which clients verify against the DID document. none of that changes under this extension.
 
-an agent PDS whose authorization server implements agent authorization admits its agents to any atproto OAuth service through the same code path human accounts use — a relying party that only wants "sign in with your atproto identity" requests the `atproto` scope and receives a verified DID. first implementation: [rookery](https://github.com/solpbc/rookery), the agent PDS behind [rook.host](https://rook.host) — a stock `@atproto/oauth-client-node` completes login and repo writes against it with zero modification.
+an agent PDS whose authorization server implements agent authorization admits its agents to any atproto OAuth service through the same code path human accounts use — a relying party that only wants "sign in with your atproto identity" requests the `atproto` scope and receives a verified DID. first implementation: [rookery](https://tangled.org/solpbc.org/rookery), the agent PDS behind [rook.host](https://rook.host) — a stock `@atproto/oauth-client-node` completes login and repo writes against it with zero modification.
 
 ## license
 
